@@ -1,0 +1,10 @@
+/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/cuda/memory.py:354: FutureWarning: torch.cuda.max_memory_cached has been renamed to torch.cuda.max_memory_reserved
+  FutureWarning)
+/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/cuda/memory.py:346: FutureWarning: torch.cuda.memory_cached has been renamed to torch.cuda.memory_reserved
+  FutureWarning)
+Traceback (most recent call last):
+  File "bm.eval.py", line 247, in <module>
+    write_time2csv('CortexODE', t_sec, loading = True)
+  File "bm.eval.py", line 38, in write_time2csv
+    with open(filename, 'a') as f_object:
+FileNotFoundError: [Errno 2] No such file or directory: '/data/users2/washbee/speedrun/bm.loading.csv'

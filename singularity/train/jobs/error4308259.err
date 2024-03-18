@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "train.py", line 285, in <module>
+    train_surf(config)
+  File "train.py", line 174, in train_surf
+    match = re.search(r'(\d+)epochs', args.model_file)
+NameError: name 're' is not defined
+Traceback (most recent call last):
+  File "train.py", line 285, in <module>
+    train_surf(config)
+  File "train.py", line 174, in train_surf
+    match = re.search(r'(\d+)epochs', args.model_file)
+NameError: name 're' is not defined

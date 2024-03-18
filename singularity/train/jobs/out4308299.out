@@ -1,0 +1,12 @@
+loading model model_wm_adni_rh_exp6_60epochs.pt
+hemi rh
+surftype wm
+device cuda
+loading model model_gm_adni_rh_exp6_60epochs.pt
+hemi rh
+surftype gm
+device cuda
+Model loaded from /cortexode/ckpts/experiment_6_A100/model/model_gm_adni_rh_exp6_60epochs.ptModel loaded from /cortexode/ckpts/experiment_6_A100/model/model_wm_adni_rh_exp6_60epochs.pt
+
+start epochstart epoch  6060
+

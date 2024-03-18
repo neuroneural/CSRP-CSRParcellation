@@ -1,0 +1,2 @@
+/cortexode/singularity/benchmarks/euler/bm.pred2.sh: line 4: 1350690 Killed                  python bm.pred2.py --test_type='pred' --data_dir='/speedrun/cortexode-data-rp/bm/' --model_dir='/cortexode/ckpts/experiment_3_mod/model/best/' --result_dir='/cortexode/ckpts/rp-hcptrained-testset-bm/' --data_name='hcp' --surf_hemi='lh' --tag='hcp-trained' --solver='euler' --step_size=0.1 --device='gpu'
+slurmstepd: error: Detected 1 oom-kill event(s) in StepId=4409296.batch. Some of your processes may have been killed by the cgroup out-of-memory handler.

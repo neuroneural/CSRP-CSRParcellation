@@ -1,0 +1,8 @@
+usage: train.py [-h] [--data_name DATA_NAME] [--train_type TRAIN_TYPE]
+                [--surf_type SURF_TYPE] [--surf_hemi SURF_HEMI]
+                [--device DEVICE] [--tag TAG] [--solver SOLVER]
+                [--step_size STEP_SIZE] [--lambd LAMBD]
+                [--n_inflate N_INFLATE] [--rho RHO] [--n_epochs N_EPOCHS]
+                [--n_samples N_SAMPLES] [--lr LR] [--kernel_size KERNEL_SIZE]
+                [--dim_h DIM_H] [--n_scale N_SCALE]
+train.py: error: unrecognized arguments: --data_dir=/data/users2/washbee/speedrun/cortexode-data-rp/ --model_dir=./ckpts/experiment_2/model/

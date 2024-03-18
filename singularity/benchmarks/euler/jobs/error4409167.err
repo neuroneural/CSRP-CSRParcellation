@@ -1,0 +1,4 @@
+  0%|          | 0/1 [00:00<?, ?it/s]/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/nn/functional.py:3063: UserWarning: Default upsampling behavior when mode=trilinear is changed to align_corners=False since 0.4.0. Please specify align_corners=True if the old behavior is desired. See the documentation of nn.Upsample for details.
+  "See the documentation of nn.Upsample for details.".format(mode))
+/cortexode/singularity/benchmarks/euler/bm.pred2.sh: line 4: 1695400 Killed                  python bm.pred2.py --test_type='pred' --data_dir='/speedrun/cortexode-data-rp/bm/' --model_dir='/cortexode/ckpts/experiment_3_mod/model/best/' --result_dir='/cortexode/ckpts/rp-hcptrained-testset-bm/' --data_name='hcp' --surf_hemi='lh' --tag='hcp-trained' --solver='euler' --step_size=0.1 --device='gpu'
+slurmstepd: error: Detected 1 oom-kill event(s) in StepId=4409167.batch. Some of your processes may have been killed by the cgroup out-of-memory handler.

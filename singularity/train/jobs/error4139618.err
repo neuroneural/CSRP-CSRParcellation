@@ -1,0 +1,12 @@
+Traceback (most recent call last):
+  File "train.py", line 265, in <module>
+    train_seg(config)
+  File "train.py", line 37, in train_seg
+    level=logging.INFO, format='%(asctime)s %(message)s')
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/logging/__init__.py", line 1898, in basicConfig
+    h = FileHandler(filename, mode)
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/logging/__init__.py", line 1087, in __init__
+    StreamHandler.__init__(self, self._open())
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/logging/__init__.py", line 1116, in _open
+    return open(self.baseFilename, self.mode, encoding=self.encoding)
+FileNotFoundError: [Errno 2] No such file or directory: '/cortexode/ckpts/experiment_4/model/model_seg_hcp_exp4.log'
