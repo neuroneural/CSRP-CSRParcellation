@@ -8,6 +8,7 @@ import numpy as np
 from tqdm import tqdm
 from data.dataloader import load_surf_data, load_seg_data
 from model.net import CortexODE, Unet
+from model.csrfusionnet import CSRFnet, SegUnet
 from util.mesh import compute_dice
 
 from pytorch3d.loss import chamfer_distance
@@ -164,7 +165,11 @@ def train_surf(config):
     # initialize models
     # --------------------------
     logging.info("initalize model ...")
-    cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
+    if config.model_type == 'csrf':
+        cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
+    else:
+        cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
+    
     start_epoch = 0
     model_path = None
     
@@ -172,11 +177,11 @@ def train_surf(config):
         print('loading model',config.model_file)
         print('hemi', config.surf_hemi)
         print('surftype', config.surf_type)
-
+        
         match = re.search(r'(\d+)epochs', config.model_file)
         start_epoch = int(match.group(1)) if match else 0
         model_path = os.path.join(config.model_dir, config.model_file)
-        
+    
     # Load model state if a model path is provided
     if model_path and os.path.isfile(model_path):
         print('device', config.device)
@@ -198,7 +203,7 @@ def train_surf(config):
 
     trainloader = DataLoader(trainset, batch_size=1, shuffle=True)
     validloader = DataLoader(validset, batch_size=1, shuffle=False)
-
+    
     # --------------------------
     # training
     # --------------------------
@@ -218,10 +223,12 @@ def train_surf(config):
             v_gt = v_gt.to(device)
             f_gt = f_gt.to(device)
             
-            cortexode.set_data(v_in, volume_in)    # set the input data
+            if config.model_type == 'csrf':
+                cortexode.set_data(v_in, volume_in, f=f_in)
+            else:
+                cortexode.set_data(v_in, volume_in)    # set the input data
 
             if surf_type == 'wm':    # training with randomly sampled points
-
                 ### integration using seminorm (not recommended)
                 # v_out = odeint(cortexode, v_in, t=T, method=solver,
                 #                options=dict(step_size=step_size), adjoint_options=dict(norm='seminorm'))[-1]
@@ -264,8 +271,11 @@ def train_surf(config):
                     v_gt = v_gt.to(device)
                     f_gt = f_gt.to(device)
 
-                    cortexode.set_data(v_in, volume_in)
-
+                    if config.model_type == 'csrf':
+                        cortexode.set_data(v_in, volume_in, f=f_in)
+                    else:
+                        cortexode.set_data(v_in, volume_in)    # set the input data
+                    
                     v_out = odeint(cortexode, v_in, t=T, method=solver,
                                    options=dict(step_size=step_size))[-1]
                     valid_error.append(1e3 * chamfer_distance(v_out, v_gt)[0].item())

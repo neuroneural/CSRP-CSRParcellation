@@ -1,0 +1,48 @@
+Traceback (most recent call last):
+  File "train.py", line 11, in <module>
+    from model.csrfusionnet import CSRFnet, SegUnet
+  File "/cortexode/model/csrfusionnet.py", line 6, in <module>
+Traceback (most recent call last):
+  File "train.py", line 11, in <module>
+    from model.csrfusionnet import CSRFnet, SegUnet
+  File "/cortexode/model/csrfusionnet.py", line 6, in <module>
+    from torch_geometric.utils import add_self_loops
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/__init__.py", line 7, in <module>
+    from torch_geometric.utils import add_self_loops
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/__init__.py", line 7, in <module>
+    import torch_geometric.data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/__init__.py", line 1, in <module>
+    import torch_geometric.data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/__init__.py", line 1, in <module>
+    from .data import Data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/data.py", line 3, in <module>
+    from .data import Data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/data.py", line 3, in <module>
+    from torch_geometric.typing import OptTensor
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/typing.py", line 4, in <module>
+    from torch_geometric.typing import OptTensor
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/typing.py", line 4, in <module>
+    from torch_sparse import SparseTensor
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_sparse/__init__.py", line 40, in <module>
+    from torch_sparse import SparseTensor
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_sparse/__init__.py", line 40, in <module>
+    from .storage import SparseStorage  # noqa
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_sparse/storage.py", line 5, in <module>
+    from .storage import SparseStorage  # noqa
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_sparse/storage.py", line 5, in <module>
+    from torch_scatter import segment_csr, scatter_add
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_scatter/__init__.py", line 16, in <module>
+    from torch_scatter import segment_csr, scatter_add
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_scatter/__init__.py", line 16, in <module>
+    torch.ops.load_library(spec.origin)
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/_ops.py", line 105, in load_library
+    torch.ops.load_library(spec.origin)
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/_ops.py", line 105, in load_library
+    ctypes.CDLL(path)
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/ctypes/__init__.py", line 364, in __init__
+    ctypes.CDLL(path)
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/ctypes/__init__.py", line 364, in __init__
+    self._handle = _dlopen(self._name, mode)    
+self._handle = _dlopen(self._name, mode)
+OSErrorOSError: : libtorch_cuda_cu.so: cannot open shared object file: No such file or directorylibtorch_cuda_cu.so: cannot open shared object file: No such file or directory
+

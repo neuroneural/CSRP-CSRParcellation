@@ -7,4 +7,4 @@ cd /cortexode
 # model_wm_adni_lh_exp6_270epochs.pt
 # model_wm_adni_rh_exp6_270epochs.pt
 
-python train.py --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/experiment_6_A100_part2/model/' --model_file='model_wm_adni_rh_exp6_270epochs.pt' --init_dir='/cortexode/ckpts/experiment_6_A100_part2/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='wm' --n_epochs=400 --n_samples=150000 --tag='exp6' --solver='rk4' --step_size=0.1 --device='gpu'
+python train.py --train_type='surf' --data_dir='/speedrun/csrf-data-dev/' --model_dir='/cortexode/ckpts/exp_csrf_v1/model/' --init_dir='/cortexode/ckpts/exp_csrf_v1/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='wm' --n_epochs=100 --n_samples=150000 --tag='csrf' --solver='euler' --step_size=0.1 --device='gpu'

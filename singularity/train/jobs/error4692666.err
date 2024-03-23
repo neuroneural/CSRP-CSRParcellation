@@ -1,0 +1,28 @@
+Traceback (most recent call last):
+  File "train.py", line 11, in <module>
+    from model.csrfusionnet import CSRFnet, SegUnet
+  File "/cortexode/model/csrfusionnet.py", line 6, in <module>
+    from torch_geometric.utils import add_self_loops
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/__init__.py", line 4, in <module>
+    import torch_geometric.data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/__init__.py", line 1, in <module>
+    from .data import Data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/data.py", line 20, in <module>
+Traceback (most recent call last):
+  File "train.py", line 11, in <module>
+    from model.csrfusionnet import CSRFnet, SegUnet
+  File "/cortexode/model/csrfusionnet.py", line 6, in <module>
+    from torch_geometric.utils import add_self_loops
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/__init__.py", line 4, in <module>
+    import torch_geometric.data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/__init__.py", line 1, in <module>
+    from .data import Data
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_geometric/data/data.py", line 20, in <module>
+    from torch_sparse import SparseTensor
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_sparse/__init__.py", line 28, in <module>
+    from torch_sparse import SparseTensor
+  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch_sparse/__init__.py", line 28, in <module>
+    f'Detected that PyTorch and torch_sparse were compiled with '
+RuntimeError: Detected that PyTorch and torch_sparse were compiled with different CUDA versions. PyTorch has CUDA version 11.0 and torch_sparse has CUDA version 0.0. Please reinstall the torch_sparse that matches your PyTorch install.
+    f'Detected that PyTorch and torch_sparse were compiled with '
+RuntimeError: Detected that PyTorch and torch_sparse were compiled with different CUDA versions. PyTorch has CUDA version 11.0 and torch_sparse has CUDA version 0.0. Please reinstall the torch_sparse that matches your PyTorch install.
