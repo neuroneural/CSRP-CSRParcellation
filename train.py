@@ -166,7 +166,10 @@ def train_surf(config):
     # --------------------------
     logging.info("initalize model ...")
     if config.model_type == 'csrf':
-        cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
+        cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
+                       sf=.1,
+                       gnn_layers=5,
+                       gnnVersion=2).to(device)
     else:
         cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
     

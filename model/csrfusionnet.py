@@ -8,6 +8,7 @@ import torch_geometric.nn as pyg_nn
 from torch_geometric.utils import add_self_loops
 from torch_geometric.nn import GATConv
 
+from util.mesh import compute_normal
 
 
 # segmentation U-Net
@@ -136,7 +137,7 @@ class NodeFeatureNet(nn.Module):
     def __init__(self, C=128, K=5, n_scale=1):
         super(NodeFeatureNet, self).__init__()
         # mlp layers
-        self.fc1 = nn.Linear(3, C)
+        self.fc1 = nn.Linear(6, C)
         self.fc2 = nn.Linear(C*2, C*4)
         self.fc3 = nn.Linear(C*4, C*2)
         
@@ -159,13 +160,16 @@ class NodeFeatureNet(nn.Module):
 
     def forward(self, v):
         
+        
         z_local = self.cube_sampling(v)
         z_local = self.localconv(z_local)
         z_local = z_local.view(-1, self.m, self.C)
         z_local = self.localfc(z_local)
         
         # point feature
-        z_point = F.leaky_relu(self.fc1(v), 0.2)
+        normal = compute_normal(v,self.f)
+        x = torch.cat([v, normal], 2)
+        z_point = F.leaky_relu(self.fc1(x), 0.2)
         
         # feature fusion
         z = torch.cat([z_point, z_local], 2)
@@ -218,7 +222,7 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
     
 class DeformBlockGNN(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=3,sf=1.0,gnn_layers=5,gnnVersion=2):
+    def __init__(self, C=128, K=5, n_scale=3,sf=1.0,gnn_layers=2,gnnVersion=2):
         super(DeformBlockGNN, self).__init__()
         self.nodeFeatureNet = NodeFeatureNet(C=C,K=K,n_scale=n_scale)
         #chatgpt,declare a custom 2 layer gcn here that takes features from nodeFeatureNet to predict node features, use a tanh nonlinearity at the end instead of softmax. 
@@ -260,9 +264,9 @@ class CSRFnet(nn.Module):
                        dim_h=128,
                        kernel_size=5,
                        n_scale=3,
-                       sf=.1,
-                       gnn_layers=2,
-                       gnnVersion=1):
+                       sf=1.0,
+                       gnn_layers=5,
+                       gnnVersion=2):
         
         super(CSRFnet, self).__init__()
 

@@ -82,7 +82,7 @@ class CortexODE(nn.Module):
         
         super(CortexODE, self).__init__()
 
-
+        print("CortexODE training")
         C = dim_h        # hidden dimension
         K = kernel_size  # kernel size
         Q = n_scale      # number of scales
