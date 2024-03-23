@@ -8,6 +8,8 @@ import torch_geometric.nn as pyg_nn
 from torch_geometric.utils import add_self_loops
 from torch_geometric.nn import GATConv
 
+
+
 # segmentation U-Net
 class SegUnet(nn.Module):
     def __init__(self, c_in=1, c_out=2):
@@ -135,10 +137,12 @@ class NodeFeatureNet(nn.Module):
         super(NodeFeatureNet, self).__init__()
         # mlp layers
         self.fc1 = nn.Linear(3, C)
+        self.fc2 = nn.Linear(C*2, C*4)
+        self.fc3 = nn.Linear(C*4, C*2)
         
         # for local convolution operation
         self.localconv = nn.Conv3d(n_scale, C, (K, K, K))
-        # self.localfc = nn.Linear(C, C)#remove
+        self.localfc = nn.Linear(C, C)
         
         Q = n_scale      # number of scales
         
@@ -154,15 +158,21 @@ class NodeFeatureNet(nn.Module):
         self.cubes = torch.zeros([1, self.Q, self.K, self.K, self.K])
 
     def forward(self, v):
-        x = F.leaky_relu(self.fc1(v), 0.2)
-        # local feature
-        cubes = self.cube_sampling(v)    # extract K^3 cubes
-        x_local = self.localconv(cubes)#Todo:consider reducing
-        x_local = x_local.view(1, v.shape[1], self.C)
-        # fusion
-        x = torch.cat([torch.zeros_like(x), x_local], 2)
         
-        return x    # node features
+        z_local = self.cube_sampling(v)
+        z_local = self.localconv(z_local)
+        z_local = z_local.view(-1, self.m, self.C)
+        z_local = self.localfc(z_local)
+        
+        # point feature
+        z_point = F.leaky_relu(self.fc1(v), 0.2)
+        
+        # feature fusion
+        z = torch.cat([z_point, z_local], 2)
+        z = F.leaky_relu(self.fc2(z), 0.2)
+        z = F.leaky_relu(self.fc3(z), 0.2)
+        
+        return z    # node features
     
     def _initialize(self, V):
         # initialize coordinates shift and cubes
@@ -208,7 +218,7 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
     
 class DeformBlockGNN(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=1,sf=.1,gnn_layers=2,gnnVersion=1):
+    def __init__(self, C=128, K=5, n_scale=3,sf=1.0,gnn_layers=5,gnnVersion=2):
         super(DeformBlockGNN, self).__init__()
         self.nodeFeatureNet = NodeFeatureNet(C=C,K=K,n_scale=n_scale)
         #chatgpt,declare a custom 2 layer gcn here that takes features from nodeFeatureNet to predict node features, use a tanh nonlinearity at the end instead of softmax. 
