@@ -163,32 +163,34 @@ def compute_mesh_distance(v_pred, v_gt, f_pred, f_gt, n_pts=100000, seed=10086):
     return assd, hd
 
 
-from mesh_intersection.bvh_search_tree import BVH
 
+# from mesh_intersection.bvh_search_tree import BVH
 def check_self_intersect(v, f, collisions=8):
-    """
-    Check mesh self-intersections.
+    assert False,'unsupported'
+# def check_self_intersect(v, f, collisions=8):
+#     """
+#     Check mesh self-intersections.
     
-    We use the calculate_non_manifold_face_intersection function from
-    the Neural Mesh Flow paper. For original code please see:
-    - https://github.com/KunalMGupta/NeuralMeshFlow/blob/master/evaluation/tools.py
-    """
+#     We use the calculate_non_manifold_face_intersection function from
+#     the Neural Mesh Flow paper. For original code please see:
+#     - https://github.com/KunalMGupta/NeuralMeshFlow/blob/master/evaluation/tools.py
+#     """
     
-    triangles = v[:, f[0]]
-    bvh = BVH(max_collisions=collisions)
-    outputs = bvh(triangles)
-    outputs = outputs.detach().cpu().numpy().squeeze()
-    collisions = outputs[outputs[:, 0] >= 0, :]  # the number of collisions
+#     triangles = v[:, f[0]]
+#     bvh = BVH(max_collisions=collisions)
+#     outputs = bvh(triangles)
+#     outputs = outputs.detach().cpu().numpy().squeeze()
+#     collisions = outputs[outputs[:, 0] >= 0, :]  # the number of collisions
     
-    # ------- old version ------- 
-    # This just returns the ratio #collisions / #faces.
-    # It will over-estimate the percentage of SIFs.
-    # return collisions.shape[0] / f.shape[1] * 100.
+#     # ------- old version ------- 
+#     # This just returns the ratio #collisions / #faces.
+#     # It will over-estimate the percentage of SIFs.
+#     # return collisions.shape[0] / f.shape[1] * 100.
 
-    # ------- new version ------- 
-    # Find all self-intersected faces using a set without overlapping
-    sifs = len(set(collisions.reshape(-1)))
-    return sifs / f.shape[1] * 100.
+#     # ------- new version ------- 
+#     # Find all self-intersected faces using a set without overlapping
+#     sifs = len(set(collisions.reshape(-1)))
+#     return sifs / f.shape[1] * 100.
 
 
 def compute_dice(x, y, dim='2d'):
