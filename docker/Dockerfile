@@ -53,6 +53,7 @@ RUN conda install -y pytorch3d -c pytorch3d
 
 # Install other Python packages with pip
 RUN pip install scipy==1.6.2 scikit-image==0.18.1 numba==0.53.1 nibabel==3.2.1 trimesh==3.9.15 tqdm==4.59.0 torchdiffeq==0.2.1
+RUN conda install -y pyg -c pyg
 RUN pip install --no-index pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-1.12.1+cu116.html
 RUN pip install monai==1.2.0
 

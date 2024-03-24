@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/cortexode/train.py", line 9, in <module>
+  File "/cortexode/train.py", line 9, in <module>
+        from data.dataloader import load_surf_data, load_seg_datafrom data.dataloader import load_surf_data, load_seg_data
+
+  File "/cortexode/data/dataloader.py", line 11, in <module>
+  File "/cortexode/data/dataloader.py", line 11, in <module>
+        from util.mesh import laplacian_smooth, compute_normalfrom util.mesh import laplacian_smooth, compute_normal
+
+  File "/cortexode/util/mesh.py", line 166, in <module>
+  File "/cortexode/util/mesh.py", line 166, in <module>
+    from mesh_intersection.bvh_search_tree import BVH    
+from mesh_intersection.bvh_search_tree import BVH
+ModuleNotFoundErrorModuleNotFoundError: : No module named 'mesh_intersection'No module named 'mesh_intersection'
+

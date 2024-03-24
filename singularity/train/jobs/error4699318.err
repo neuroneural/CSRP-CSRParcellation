@@ -1,0 +1,14 @@
+<frozen importlib._bootstrap>:228: RuntimeWarning: scipy._lib.messagestream.MessageStream size changed, may indicate binary incompatibility. Expected 56 from C header, got 64 from PyObject
+<frozen importlib._bootstrap>:228: RuntimeWarning: scipy._lib.messagestream.MessageStream size changed, may indicate binary incompatibility. Expected 56 from C header, got 64 from PyObject
+Traceback (most recent call last):
+  File "/cortexode/train.py", line 11, in <module>
+Traceback (most recent call last):
+  File "/cortexode/train.py", line 11, in <module>
+    from model.csrfusionnet import CSRFnet, SegUnet
+  File "/cortexode/model/csrfusionnet.py", line 8, in <module>
+    from model.csrfusionnet import CSRFnet, SegUnet
+  File "/cortexode/model/csrfusionnet.py", line 8, in <module>
+    import pyg_nn
+    ModuleNotFoundErrorimport pyg_nn: 
+No module named 'pyg_nn'
+ModuleNotFoundError: No module named 'pyg_nn'

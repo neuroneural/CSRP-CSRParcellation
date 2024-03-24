@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/cortexode/train.py", line 9, in <module>
+  File "/cortexode/train.py", line 9, in <module>
+        from data.dataloader import load_surf_data, load_seg_datafrom data.dataloader import load_surf_data, load_seg_data
+
+  File "/cortexode/data/dataloader.py", line 11, in <module>
+  File "/cortexode/data/dataloader.py", line 11, in <module>
+    from util.mesh import laplacian_smooth, compute_normal
+  File "/cortexode/util/mesh.py", line 113, in <module>
+    from util.mesh import laplacian_smooth, compute_normal
+  File "/cortexode/util/mesh.py", line 113, in <module>
+    from pytorch3d.ops import sample_points_from_meshes
+ModuleNotFoundError: No module named 'pytorch3d'
+    from pytorch3d.ops import sample_points_from_meshes
+ModuleNotFoundError: No module named 'pytorch3d'
