@@ -145,7 +145,7 @@ if __name__ == '__main__':
             brain_arr = (brain_arr / 20).astype(np.float16)
         brain_arr = process_volume(brain_arr, data_name)
         volume_in = torch.Tensor(brain_arr).unsqueeze(0).to(device)
-
+        
         # ------- predict segmentation ------- 
         with torch.no_grad():
             seg_out = segnet(volume_in)

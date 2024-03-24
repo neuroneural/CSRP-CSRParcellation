@@ -169,7 +169,7 @@ def train_surf(config):
         cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
                        sf=.1,
                        gnn_layers=5,
-                       gnnVersion=2).to(device)
+                       gnnVersion=1).to(device)
     else:
         cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
     

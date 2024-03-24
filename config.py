@@ -9,6 +9,7 @@ def load_config():
     # for training
     parser.add_argument('--data_dir', default="../dataset/hcp600/", type=str, help="directory of the dataset")
     parser.add_argument('--model_dir', default="./ckpts/model/", type=str, help="directory for saving the models")
+    parser.add_argument('--model_type', default="csrf", type=str, help="either: [csrf, cortexode]")
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--data_name', default="hcp", type=str, help="name of the dataset")
     parser.add_argument('--train_type', default="surf", type=str, help="type of training: [seg, surf]")
