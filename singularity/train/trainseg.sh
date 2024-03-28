@@ -1,5 +1,5 @@
 #!/bin/bash
-. /opt/miniconda3/bin/activate cortexode
+. /opt/miniconda3/bin/activate csrf
 cd /cortexode
-python train.py --train_type='seg' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='./ckpts/experiment_5/model/' --data_name='adni' --n_epoch=205 --tag='exp5' --device='gpu'
+python train.py --seg_model_type='SwinUNETR' --train_type='seg' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='./ckpts/exp_csrf_7/model/' --data_name='adni' --n_epoch=205 --tag='SwinUNETR' --device='gpu'
 

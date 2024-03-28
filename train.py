@@ -3,12 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
+import monai.networks.nets as nets
+import warnings
+warnings.filterwarnings("ignore", message="numpy.dtype size changed")
+warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
+
 
 import numpy as np
 from tqdm import tqdm
 from data.dataloader import load_surf_data, load_seg_data
 from model.net import CortexODE, Unet
-from model.csrfusionnet import CSRFnet, SegUnet
+from model.csrfusionnet import CSRFnet
+from model.segmenterfactory import SegmenterFactory
 from util.mesh import compute_dice
 
 from pytorch3d.loss import chamfer_distance
@@ -20,7 +26,6 @@ from torchdiffeq import odeint_adjoint as odeint
 from config import load_config
 import re
 import os
-
 
 def train_seg(config):
     """training WM segmentation"""
@@ -34,7 +39,7 @@ def train_seg(config):
     tag = config.tag
     n_epochs = config.n_epochs
     lr = config.lr
-
+    
     # start training logging
     logging.basicConfig(filename=model_dir+'model_seg_'+data_name+'_'+tag+'.log',
                         level=logging.INFO, format='%(asctime)s %(message)s')
@@ -53,7 +58,19 @@ def train_seg(config):
     # initialize model
     # --------------------------
     logging.info("initalize model ...")
-    segnet = Unet(c_in=1, c_out=3).to(device)
+    #segnet = Unet(c_in=1, c_out=3).to(device)#renamed SegUnet
+    print('config.seg_model_type',config.seg_model_type)
+
+    if config.seg_model_type == "SwinUNETR":
+        segnet = SegmenterFactory.get_segmenter("SwinUNETR",device)
+    elif config.seg_model_type == "MonaiUnet":
+        segnet = SegmenterFactory.get_segmenter("MonaiUnet",device)    
+    elif config.seg_model_type == "SegUnet":
+        segnet = SegmenterFactory.get_segmenter("SegUnet",device)
+    else:
+        assert False, "Config model name is incorrect"
+        
+    
     optimizer = optim.Adam(segnet.parameters(), lr=lr)
     # in case you need to load a checkpoint
     # segnet.load_state_dict(torch.load(model_dir+'model_seg_'+data_name+'_'+tag+'_XXepochs.pt'))
@@ -73,11 +90,44 @@ def train_seg(config):
             volume_in = volume_in.to(device)
             seg_gt = seg_gt.long().to(device)
 
-            seg_out = segnet(volume_in)
+            # Check if the model requires padding and cropping
+            if config.seg_model_type == "SwinUNETR":
+                original_size = [1, 1, 176, 208, 176]  # Original input size
+                target_size = [1, 1, 192, 224, 192]  # Target size after padding
+
+                # Step 1: Pad the volume to the target size
+                padded_volume = SegmenterFactory.pad_to_size(volume_in, target_size)
+                
+                # Process padded volume through the network
+                seg_out = segnet(padded_volume)
+
+                # Ensure the output size matches the padded input, with the channel size adjusted for segmentation
+                pvshapemod = list(padded_volume.size())
+                pvshapemod[2:] = target_size[2:]  # Only spatial dimensions are padded, channel dimension stays
+                assert list(seg_out.size())[2:] == pvshapemod[2:], "Segmentation output size mismatch after padding"
+
+                # Step 2: Crop the output back to the original input size
+                original_size_seg = [1, 3, 176, 208, 176]  # Adjust for the number of segmentation classes
+                cropped_volume = SegmenterFactory.crop_to_original_size(seg_out, original_size_seg)
+                seg_out = cropped_volume
+            else:
+                # For models that don't require padding/cropping, process directly
+                seg_out = segnet(volume_in)
+
+            # Assertions for sanity checks
+            if config.seg_model_type == "SwinUNETR":
+                assert list(seg_out.size()) == original_size_seg, "Segmentation output size mismatch after cropping"
+            else:
+                original_size_no_padding = [1, 3, 176, 208, 176]  # Adjust for segmentation classes without padding
+                assert list(seg_out.size()) == original_size_no_padding, "Segmentation output size mismatch without padding/cropping"
+
+            # Compute the loss
             loss = nn.CrossEntropyLoss()(seg_out, seg_gt)
+            
             avg_loss.append(loss.item())
             loss.backward()
             optimizer.step()
+
 
         logging.info("epoch:{}, loss:{}".format(epoch,np.mean(avg_loss)))
 
@@ -90,15 +140,35 @@ def train_seg(config):
                     volume_in, seg_gt = data
                     volume_in = volume_in.to(device)
                     seg_gt = seg_gt.long().to(device)
-                    seg_out = segnet(volume_in)
+
+                    # Check if the model requires padding and cropping
+                    if config.seg_model_type == "SwinUNETR":
+                        # Same as the updated training loop
+                        original_size = [1, 1, 176, 208, 176]
+                        target_size = [1, 1, 192, 224, 192]
+
+                        padded_volume = SegmenterFactory.pad_to_size(volume_in, target_size)
+                        seg_out = segnet(padded_volume)
+
+                        # Ensure the output size matches the padded input
+                        assert list(seg_out.size())[2:] == target_size[2:]
+
+                        original_size = [1, 3, 176, 208, 176]
+                        cropped_volume = SegmenterFactory.crop_to_original_size(seg_out, original_size)
+                        seg_out = cropped_volume
+                    else:
+                        # Original validation code for models that do not require padding
+                        seg_out = segnet(volume_in)
+
                     avg_error.append(nn.CrossEntropyLoss()(seg_out, seg_gt).item())
-                    
-                    # compute dice score
+
+                    # Adjust the following lines to work with or without padding/cropping as needed
                     seg_out = torch.argmax(seg_out, dim=1)
                     seg_out = F.one_hot(seg_out, num_classes=3).permute(0,4,1,2,3)[:,1:]
                     seg_gt = F.one_hot(seg_gt, num_classes=3).permute(0,4,1,2,3)[:,1:]
                     dice = compute_dice(seg_out, seg_gt, '3d')
                     avg_dice.append(dice)
+
                 logging.info("epoch:{}, validation error:{}".format(epoch, np.mean(avg_error)))
                 logging.info("Dice score:{}".format(np.mean(avg_dice)))
                 logging.info('-------------------------------------')
