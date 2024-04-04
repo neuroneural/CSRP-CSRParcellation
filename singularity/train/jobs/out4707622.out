@@ -1,1 +1,2 @@
 config.seg_model_type SegUnet
+config.seg_model_type SwinUNETR

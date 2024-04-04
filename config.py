@@ -9,7 +9,7 @@ def load_config():
     # for training
     parser.add_argument('--data_dir', default="../dataset/hcp600/", type=str, help="directory of the dataset")
     parser.add_argument('--model_dir', default="./ckpts/model/", type=str, help="directory for saving the models")
-    parser.add_argument('--model_type', default="csrf", type=str, help="either: [csrf, cortexode]")
+    parser.add_argument('--model_type', default="csrf", type=str, help="either: [csrf,csrfv2, cortexode]")
     parser.add_argument('--seg_model_type', default="SegUnet", type=str, help="either: [SwinUNETR,MonaiUnet,SegUnet]")
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--data_name', default="hcp", type=str, help="name of the dataset")
@@ -19,6 +19,19 @@ def load_config():
     parser.add_argument('--device', default="gpu", type=str, help="gpu or cpu")
     parser.add_argument('--tag', default='0000', type=str, help="identity for experiments")
 
+    
+    parser.add_argument('--version', default="1", type=str, help="either: [1,2]")
+    
+    #version 1 params:
+    parser.add_argument('--gnn', default="gcn", type=str, help="either: [gcn,gat]")
+    parser.add_argument('--gnn_layers', default=6, type=int, help="num of gnn layers [2,3,4,5,6,7,8]")
+    parser.add_argument('--sf', default=0.1, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
+    parser.add_argument('--gat_heads', default=8, type=int, help="num of gnn heads [8,16,32,64]")
+    
+    #version 2 params, don't permute these for search in version 1 (wastes time, will be ignored in version 1):
+    parser.add_argument('--use_residual', default='yes', type=str, help="use residual connection:[yes,no]")
+    parser.add_argument('--use_layernorm', default='yes', type=str, help="use layer norm:[yes,no]")
+    
     parser.add_argument('--solver', default='euler', type=str, help="ODE solver: [euler, midpoint, rk4]")
     parser.add_argument('--step_size', default=0.2, type=float, help="step size of the ODE solver")
     parser.add_argument('--lambd', default=1.0, type=float, help="Laplacian smooth weight")

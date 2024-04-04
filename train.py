@@ -4,9 +4,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import monai.networks.nets as nets
-import warnings
-warnings.filterwarnings("ignore", message="numpy.dtype size changed")
-warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 
 
 import numpy as np
@@ -14,6 +11,7 @@ from tqdm import tqdm
 from data.dataloader import load_surf_data, load_seg_data
 from model.net import CortexODE, Unet
 from model.csrfusionnet import CSRFnet
+from model.csrfusionnetv2 import CSRFnetV2
 from model.segmenterfactory import SegmenterFactory
 from util.mesh import compute_dice
 
@@ -26,6 +24,8 @@ from torchdiffeq import odeint_adjoint as odeint
 from config import load_config
 import re
 import os
+import csv
+
 
 def train_seg(config):
     """training WM segmentation"""
@@ -228,18 +228,60 @@ def train_surf(config):
     solver = config.solver    # ODE solver
     
     # create log file
-    logging.basicConfig(filename=model_dir+'/model_'+surf_type+'_'+data_name+'_'+surf_hemi+'_'+tag+'.log',
-                        level=logging.INFO, format='%(asctime)s %(message)s')
+    log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}"
+
+    # If the GNN type is 'gat', include `gat_heads` in the filename
+    if config.gnn == 'gat':
+        log_filename += f"_heads{config.gat_heads}"
+
+    # Complete the filename by appending '.log'
+    log_filename += ".log"
+
+    # Configure logging to append to the specified log file, with the desired format and level
+    logging.basicConfig(filename=log_filename, filemode='a', level=logging.INFO, format='%(asctime)s %(message)s')
+
+    if config.gnn=='gcn':
+        use_gcn=True
+        gnnVersion=2
+    elif config.gnn == 'gat':
+        use_gcn=False
+        gnnVersion=1
+    else:
+        assert False, f"unsupported gnn configuration {config.gnn}"    
+    
+    if config.use_residual=='yes':
+        use_residual=True
+    elif config.use_residual=='no':
+        use_residual=False
+    else:
+        assert False, f"unsupported residual parameter {config.use_residual}"
+    
+    if config.use_layernorm=='yes':
+        use_layernorm=True
+    elif config.use_layernorm=='no':
+        use_layernorm=False
+    else:
+        assert False, f"unsupported residual parameter {config.use_layernorm}"
     
     # --------------------------
     # initialize models
     # --------------------------
     logging.info("initalize model ...")
+    
     if config.model_type == 'csrf':
         cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
-                       sf=.1,
-                       gnn_layers=5,
-                       gnnVersion=1).to(device)
+                       sf=config.sf,
+                       gnn_layers=config.gnn_layers,
+                       gnnVersion=gnnVersion,
+                       gat_heads=config.gat_heads).to(device)
+    elif config.model_type == 'csrfv2':
+        cortexode = CSRFnetV2(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
+                       sf=config.sf,
+                       gnn_layers=config.gnn_layers,
+                       use_gcn=use_gcn,
+                       use_residual=use_residual,
+                       use_layernorm = use_layernorm,
+                       gat_heads=config.gat_heads).to(device)
     else:
         cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
     
@@ -355,16 +397,63 @@ def train_surf(config):
                         
                 logging.info('epoch:{}, validation error:{}'.format(start_epoch+epoch, np.mean(valid_error)))
                 logging.info('-------------------------------------')
+                # Log to CSV
+                csv_log_path = os.path.join(model_dir, f"training_log_{tag}.csv")
+                fieldnames = ['surf_hemi','surf_type','version','epoch', 'validation_error', 'gnn', 'gnn_layers', 'sf', 'gat_heads']
+                if not os.path.exists(csv_log_path):
+                    with open(csv_log_path, 'w', newline='') as csvfile:
+                        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                        writer.writeheader()
+
+                with open(csv_log_path, 'a', newline='') as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    if config.gnn=='gat':
+                        writer.writerow({
+                            'surf_hemi' : surf_hemi,
+                            'surf_type' : surf_type,
+                            'version' : config.version,
+                            'epoch': start_epoch+epoch,
+                            'validation_error': np.mean(valid_error),
+                            'gnn': config.gnn,
+                            'gnn_layers': config.gnn_layers,
+                            'sf': config.sf,
+                            'gat_heads': config.gat_heads
+                        })
+                    elif config.gnn=='gcn':
+                        writer.writerow({
+                            'surf_hemi' : surf_hemi,
+                            'surf_type' : surf_type,
+                            'version' : config.version,
+                            'epoch': start_epoch+epoch,
+                            'validation_error': np.mean(valid_error),
+                            'gnn': config.gnn,
+                            'gnn_layers': config.gnn_layers,
+                            'sf': config.sf,
+                            'gat_heads': 'NA'
+                        })
+
 
         # save model checkpoints 
         if (start_epoch+epoch) % 10 == 0:
-            torch.save(cortexode.state_dict(), model_dir+'/model_'+surf_type+'_'+\
-                       data_name+'_'+surf_hemi+'_'+tag+'_'+str(epoch+start_epoch)+'epochs.pt')
-
-    # save the final model
-    torch.save(cortexode.state_dict(), model_dir+'/model_'+surf_type+'_'+\
-               data_name+'_'+surf_hemi+'_'+tag+'.pt')
+            if config.gnn=='gat':
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{start_epoch+epoch}epochs.pt"
+            elif config.gnn =='gcn':
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{start_epoch+epoch}epochs.pt"
+            else:
+                assert False,'update naming conventions for model file name'
+            
+            torch.save(cortexode.state_dict(), os.path.join(model_dir, model_filename))
     
+    if config.gnn=='gat':
+        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}.pt"
+    elif config.gnn =='gcn':
+        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}.pt"
+    else:
+        assert False,'update naming conventions for model file name'
+    
+    # save the final model
+    torch.save(cortexode.state_dict(), os.path.join(model_dir, final_model_filename))
+
 
 if __name__ == '__main__':
     config = load_config()

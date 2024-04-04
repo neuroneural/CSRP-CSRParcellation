@@ -10,75 +10,7 @@ from torch_geometric.nn import GATConv
 
 from util.mesh import compute_normal
 
-#N layer GCN using pyg
-class NLayerGCN(nn.Module):
-    def __init__(self, in_features, hidden_features,num_layers, out_features=3):
-        super(NLayerGCN, self).__init__()
-        assert num_layers > 1, "Number of layers should be greater than 1"
-        
-        # Initialize the GAT layers
-        self.layers = nn.ModuleList()
-        
-        # First layer
-        self.layers.append(pyg_nn.GCNConv(in_features, hidden_features))
-
-        # Hidden layers
-        for _ in range(num_layers - 2):
-            self.layers.append(pyg_nn.GCNConv(hidden_features, hidden_features))
-
-        # Output layer
-        self.layers.append(pyg_nn.GCNConv(hidden_features, out_features))
-    
-    def forward(self, x, edge_list):
-        # Create a subset of vertices
-        x = x.squeeze()
-        
-        # Pass the subset of vertices and edges to the GCN layers
-        # Assuming self.layers is a list of GCN layers in your model
-        for layer in self.layers:
-            x = layer(x, edge_list)
-
-        return x
-
-
-class NLayerGAT(nn.Module):
-    def __init__(self, in_features, hidden_features, num_layers, gat_heads=8, out_features=3):
-        super(NLayerGAT, self).__init__()
-        
-        if num_layers < 2:
-            raise ValueError("Number of layers should be at least 2")
-        
-        self.layers = nn.ModuleList()
-        
-        # Add first layer (input to hidden)
-        self.layers.append(GATConv(in_features, hidden_features, heads=gat_heads))
-        # Intermediate feature size expands due to concatenation of head outputs
-        current_dim = hidden_features * gat_heads
-
-        # Add intermediate layers
-        for _ in range(1, num_layers - 1):
-            self.layers.append(GATConv(current_dim, hidden_features, heads=gat_heads))
-            # Keep expanding the feature size in hidden layers
-            current_dim = hidden_features * gat_heads
-
-        # Add final layer (hidden to output)
-        # The final layer reduces the feature dimensionality to the desired output size
-        # Since we want [nodes, 3] as output, we use heads=1 to avoid expanding feature size further
-        self.layers.append(GATConv(current_dim, out_features, heads=1))
-        
-    def forward(self, x, edge_index):
-        # Process input through GAT layers
-        x = x.squeeze()
-        for i, layer in enumerate(self.layers):
-            x = layer(x, edge_index)
-            if i < len(self.layers) - 1:
-                # Apply ReLU activation for all but the last layer
-                x = F.relu(x)
-            else:
-                # No activation after the last layer; adjust if necessary
-                pass
-        return x
-
+from model.residualgnn import ResidualGNN
 
 class NodeFeatureNet(nn.Module):
     def __init__(self, C=128, K=5, n_scale=1):
@@ -95,7 +27,7 @@ class NodeFeatureNet(nn.Module):
         Q = n_scale      # number of scales
         
         self.n_scale = n_scale
-        self.K = K        
+        self.K = K
         self.C = C
         self.Q = Q
         # for cube sampling
@@ -169,20 +101,21 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
     
 class DeformBlockGNN(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=3,sf=1.0,gnn_layers=2,gnnVersion=2,gat_heads=8):
+    def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True,use_residual=True, use_layernorm=True, gat_heads=8):
         super(DeformBlockGNN, self).__init__()
-        self.nodeFeatureNet = NodeFeatureNet(C=C,K=K,n_scale=n_scale)
-        #chatgpt,declare a custom 2 layer gcn here that takes features from nodeFeatureNet to predict node features, use a tanh nonlinearity at the end instead of softmax. 
-        self.n_scale = n_scale
-        self.C = C
-        self.K = K
-        self.sf = sf
-        if gnnVersion == 1:
-            self.gcn = NLayerGAT(C*2, C, gnn_layers, gat_heads=gat_heads)
-            print('NLayerGAT',gnn_layers)
-        else:
-            self.gcn = NLayerGCN(C*2, C, gnn_layers)  # Adjust dimensions as needed
-            print('NLayerGCN',gnn_layers)
+        self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale)
+        # Initialize ResidualGNN with parameters adjusted for the task
+        self.gnn = ResidualGNN(in_features=C*2,  # Adjust based on NodeFeatureNet output
+                                   num_classes=3,  # Assuming 3D deformation vector
+                                   num_layers=gnn_layers,
+                                   gat_heads=gat_heads,  # Adjust as needed
+                                   dropout=0.1,
+                                   pool_ratio=1.0,
+                                   use_pooling=False,  # Based on application need
+                                   use_residual=use_residual,
+                                   use_layernorm=use_layernorm,
+                                   use_gcn=use_gcn,  # Choose between GCN and GAT
+                                   final_activation='tanh')  # Based on deformation requirements
     
     def set_data(self, x, V,f=None,edge_list=None):
         # x: coordinats
@@ -194,10 +127,10 @@ class DeformBlockGNN(nn.Module):
     
     def forward(self, v):
         x = self.nodeFeatureNet(v)
-        dx = self.gcn(x, self.edge_list)*self.sf #threshold the deformation like before
+        dx = self.gnn(x, self.edge_list)*self.sf #threshold the deformation like before
         return dx
 
-class CSRFnet(nn.Module):
+class CSRFnetV2(nn.Module):
     """
     The deformation network of CortexODE model.
 
@@ -211,9 +144,11 @@ class CSRFnet(nn.Module):
                        dim_h=128,
                        kernel_size=5,
                        n_scale=3,
-                       sf=1.0,
+                       sf=.1,
                        gnn_layers=5,
-                       gnnVersion=2,
+                       use_gcn=True,
+                       use_residual=True,
+                       use_layernorm=True,
                        gat_heads=8):
         
         super(CSRFnet, self).__init__()
@@ -221,8 +156,16 @@ class CSRFnet(nn.Module):
         C = dim_h        # hidden dimension
         K = kernel_size  # kernel size
         
-
-        self.block1 = DeformBlockGNN(C, K, n_scale,sf,gnn_layers=gnn_layers,gnnVersion=gnnVersion,gat_heads=gat_heads)
+        
+        self.block1 = DeformBlockGNN(C, 
+                                     K, 
+                                     n_scale,
+                                     sf,
+                                     gnn_layers=gnn_layers,
+                                     use_gcn=use_gcn,
+                                     use_residual=use_residual,
+                                     use_layernorm=use_layernorm,
+                                     gat_heads=gat_heads)
         
     def set_data(self, x, V,f=None):
         # x: coordinats
@@ -247,22 +190,6 @@ class CSRFnet(nn.Module):
         
         dx = self.block1(x)
         
-        #todo cleanup
-        # # local feature
-        # z_local = self.cube_sampling(x)
-        # z_local = self.localconv(z_local)
-        # z_local = z_local.view(-1, self.m, self.C)
-        # z_local = self.localfc(z_local)
-        
-        # # point feature
-        # z_point = F.leaky_relu(self.fc1(x), 0.2)
-        
-        # # feature fusion
-        # z = torch.cat([z_point, z_local], 2)
-        # z = F.leaky_relu(self.fc2(z), 0.2)
-        # z = F.leaky_relu(self.fc3(z), 0.2)
-        # dx = self.fc4(z)
-        #print ('dx shape',dx.shape)
         dx = dx.unsqueeze(0)
         return dx
     

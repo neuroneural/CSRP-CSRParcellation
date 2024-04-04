@@ -16,10 +16,10 @@ from util.mesh import laplacian_smooth, compute_normal
 # ----------------------------
 
 class SegData():
-    def __init__(self, vol, seg):
+    def __init__(self, vol, seg, subj_id):
         self.vol = torch.Tensor(vol)
         self.seg = torch.Tensor(seg)
-
+        self.subj_id = subj_id[0]
         vol = []
         seg = []
 
@@ -34,7 +34,7 @@ class SegDataset(Dataset):
 
     def __getitem__(self, i):
         brain = self.data[i]
-        return brain.vol, brain.seg
+        return brain.vol, brain.seg, brain.subj_id
     
     
 def load_seg_data(config, data_usage='train'):
@@ -80,7 +80,7 @@ def load_seg_data(config, data_usage='train'):
             seg_arr = np.load(data_dir+subid+'/'+subid+'_wm_label.npy', allow_pickle=True)
             seg_arr = process_volume(seg_arr, data_name)[0]
             
-        segdata = SegData(vol=brain_arr, seg=seg_arr)
+        segdata = SegData(vol=brain_arr, seg=seg_arr,subj_id=subid)
         # add to data list
         data_list.append(segdata)
 

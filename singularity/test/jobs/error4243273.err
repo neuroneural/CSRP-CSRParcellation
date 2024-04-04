@@ -1,11 +1,0 @@
-  0%|          | 0/107 [00:00<?, ?it/s]/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/nn/functional.py:3063: UserWarning: Default upsampling behavior when mode=trilinear is changed to align_corners=False since 0.4.0. Please specify align_corners=True if the old behavior is desired. See the documentation of nn.Upsample for details.
-  "See the documentation of nn.Upsample for details.".format(mode))
-  0%|          | 0/107 [00:13<?, ?it/s]
-Traceback (most recent call last):
-  File "eval.py", line 165, in <module>
-    mesh_init.export(init_dir+'init_'+data_name+'_'+surf_hemi+'_'+subid+'.obj')
-  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/trimesh/base.py", line 2553, in export
-    **kwargs)
-  File "/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/trimesh/exchange/export.py", line 53, in export_mesh
-    file_obj = open(file_path, 'wb')
-FileNotFoundError: [Errno 2] No such file or directory: '/cortexode/ckpts/experiment_4/init/test/init_hcp_lh_200008.obj'

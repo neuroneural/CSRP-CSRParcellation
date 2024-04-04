@@ -30,11 +30,13 @@ class SegmenterFactory:
             return UNet(
                 spatial_dims=3,
                 in_channels=1,
-                out_channels=3,#3 classes
-                channels=(16, 32, 64, 128, 256),
+                out_channels=3,
+                channels=(64, 128, 256, 512, 1024),  # Larger capacity
                 strides=(2, 2, 2, 2),
-                num_res_units=2
+                num_res_units=3,  # Increase the number of residual units
+                dropout=0.2,  # Optional: add dropout for regularization
             ).to(device)
+
         elif model_name=="SwinUNETR":
             return SwinUNETR(
                 img_size=(192, 224, 192),  # Size of the input image
