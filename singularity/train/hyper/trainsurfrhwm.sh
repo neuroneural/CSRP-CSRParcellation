@@ -7,7 +7,7 @@ cd /cortexode
 declare -a versions=("1" "2")
 declare -a gnns=("gcn" "gat")
 declare -a gnn_layers=(3 4 5)
-declare -a gat_heads=(4 8 16)
+declare -a gat_heads=(1 2 3)
 
 # Assuming $1 is provided as the equivalent of a job index
 job_id=$1

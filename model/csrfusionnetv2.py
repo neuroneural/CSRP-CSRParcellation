@@ -38,8 +38,6 @@ class NodeFeatureNet(nn.Module):
         self.cubes = torch.zeros([1, self.Q, self.K, self.K, self.K])
 
     def forward(self, v):
-        
-        
         z_local = self.cube_sampling(v)
         z_local = self.localconv(z_local)
         z_local = z_local.view(-1, self.m, self.C)
@@ -105,7 +103,8 @@ class DeformBlockGNN(nn.Module):
         super(DeformBlockGNN, self).__init__()
         self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale)
         # Initialize ResidualGNN with parameters adjusted for the task
-        self.gnn = ResidualGNN(in_features=C*2,  # Adjust based on NodeFeatureNet output
+        self.gnn = ResidualGNN(input_features=C*2,  # Adjust based on NodeFeatureNet output
+                                   hidden_features=C,
                                    num_classes=3,  # Assuming 3D deformation vector
                                    num_layers=gnn_layers,
                                    gat_heads=gat_heads,  # Adjust as needed
@@ -192,5 +191,3 @@ class CSRFnetV2(nn.Module):
         
         dx = dx.unsqueeze(0)
         return dx
-    
-    
