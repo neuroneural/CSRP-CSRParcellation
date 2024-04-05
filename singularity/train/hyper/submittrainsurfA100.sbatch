@@ -4,7 +4,7 @@
 #SBATCH --mem=180g
 #SBATCH -p qTRDGPUH
 #SBATCH --gres=gpu:A100:1
-#SBATCH -t 0-01:00
+#SBATCH -t 5-00:00
 #SBATCH -J ctrlh2A
 #SBATCH -e jobs/error%A_%a.err
 #SBATCH -o jobs/out%A_%a.out

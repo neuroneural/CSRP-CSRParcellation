@@ -47,7 +47,7 @@ fi
 # Execute Python script with parameters set above
 echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, GAT Heads $gat_head"
 
-python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/csrf-data-dev/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='wm' --n_epochs=1 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
+python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='wm' --n_epochs=100 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
 
 #python train.py --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_v2/model/' --init_dir='/cortexode/ckpts/exp_csrf_v2/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='wm' --n_epochs=401 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu'
 #python train.py --train_type='surf' --data_dir='/speedrun/csrf-data-dev/' --model_dir='/cortexode/ckpts/exp_csrf_v3/model/' --init_dir='/cortexode/ckpts/exp_csrf_v3/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='wm' --n_epochs=1 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu'

@@ -81,7 +81,7 @@ def train_seg(config):
     # --------------------------
     logging.info("start training ...")
         
-    for epoch in tqdm(range(n_epochs+1)):
+    for epoch in tqdm(range(n_epochs)):
         avg_loss = []
         for idx, data in enumerate(trainloader):
             volume_in, seg_gt = data
@@ -131,7 +131,7 @@ def train_seg(config):
 
         logging.info("epoch:{}, loss:{}".format(epoch,np.mean(avg_loss)))
 
-        if epoch % 10 == 0:
+        if epoch % 10 == 0 or epoch == n_epochs - 1:
             logging.info('-------------validation--------------')
             with torch.no_grad():
                 avg_error = []
@@ -173,7 +173,7 @@ def train_seg(config):
                 logging.info("Dice score:{}".format(np.mean(avg_dice)))
                 logging.info('-------------------------------------')
         # save model checkpoints
-        if epoch % 10 == 0:
+        if epoch % 10 == 0 or epoch == n_epochs - 1:
             torch.save(segnet.state_dict(),
                        model_dir+'model_seg_'+data_name+'_'+tag+'_'+str(epoch)+'epochs.pt')
     # save final model
@@ -325,7 +325,7 @@ def train_surf(config):
     
     logging.info("start training ...")
     n_epochs = n_epochs - start_epoch
-    for epoch in tqdm(range(n_epochs+1)):
+    for epoch in tqdm(range(n_epochs)):
         avg_loss = []
         for idx, data in enumerate(trainloader):
             volume_in, v_in, v_gt, f_in, f_gt = data
@@ -371,7 +371,7 @@ def train_surf(config):
 
         logging.info('epoch:{}, loss:{}'.format(start_epoch+epoch, np.mean(avg_loss)))
         
-        if (start_epoch+epoch) % 10 == 0:
+        if (start_epoch+epoch) % 10 == 0 or epoch == n_epochs - 1:
             logging.info('-------------validation--------------')
             with torch.no_grad():
                 valid_error = []
@@ -399,12 +399,14 @@ def train_surf(config):
                 logging.info('-------------------------------------')
                 # Log to CSV
                 csv_log_path = os.path.join(model_dir, f"training_log_{tag}.csv")
-                fieldnames = ['surf_hemi','surf_type','version','epoch', 'validation_error', 'gnn', 'gnn_layers', 'sf', 'gat_heads']
+                fieldnames = ['surf_hemi', 'surf_type', 'version', 'epoch', 'training_loss', 'validation_error', 'gnn', 'gnn_layers', 'sf', 'gat_heads']
+
                 if not os.path.exists(csv_log_path):
                     with open(csv_log_path, 'w', newline='') as csvfile:
                         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                         writer.writeheader()
 
+                avg_training_loss = np.mean(avg_loss)
                 with open(csv_log_path, 'a', newline='') as csvfile:
                     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                     if config.gnn=='gat':
@@ -413,6 +415,7 @@ def train_surf(config):
                             'surf_type' : surf_type,
                             'version' : config.version,
                             'epoch': start_epoch+epoch,
+                            'training_loss': avg_training_loss,  # Include training loss here
                             'validation_error': np.mean(valid_error),
                             'gnn': config.gnn,
                             'gnn_layers': config.gnn_layers,
@@ -425,6 +428,7 @@ def train_surf(config):
                             'surf_type' : surf_type,
                             'version' : config.version,
                             'epoch': start_epoch+epoch,
+                            'training_loss': avg_training_loss,  # Include training loss here
                             'validation_error': np.mean(valid_error),
                             'gnn': config.gnn,
                             'gnn_layers': config.gnn_layers,
@@ -432,9 +436,9 @@ def train_surf(config):
                             'gat_heads': 'NA'
                         })
 
-
+        
         # save model checkpoints 
-        if (start_epoch+epoch) % 10 == 0:
+        if (start_epoch+epoch) % 10 == 0 or epoch == n_epochs - 1:
             if config.gnn=='gat':
                 model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{start_epoch+epoch}epochs.pt"
             elif config.gnn =='gcn':
