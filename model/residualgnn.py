@@ -54,7 +54,8 @@ class ResidualGNN(nn.Module):
             if self.dropouts and i < len(self.dropouts):
                 x = self.dropouts[i](x)
             if self.use_residual and i > 0:
-                x += x_res
+                # x += x_res
+                assert False, "unsupported for now"
             x_res = x
             if self.pools and i < len(self.pools):
                 x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None, batch)
@@ -74,5 +75,5 @@ class ResidualGNN(nn.Module):
             x = F.log_softmax(x, dim=1)
         elif self.final_activation == 'tanh':
             x = torch.tanh(x)
-
+        
         return x
