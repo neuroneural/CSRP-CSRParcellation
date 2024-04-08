@@ -5,10 +5,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import monai.networks.nets as nets
 
-
 import numpy as np
 from tqdm import tqdm
-from data.dataloader import load_surf_data, load_seg_data
+from data.dataloader import SegDataset, BrainDataset
 from model.net import CortexODE, Unet
 from model.csrfusionnet import CSRFnet
 from model.csrfusionnetv2 import CSRFnetV2
@@ -25,7 +24,7 @@ from config import load_config
 import re
 import os
 import csv
-
+import torch.multiprocessing as mp
 
 def train_seg(config):
     """training WM segmentation"""
@@ -48,11 +47,14 @@ def train_seg(config):
     # load dataset
     # --------------------------
     logging.info("load dataset ...")
-    trainset = load_seg_data(config, data_usage='train')
-    validset = load_seg_data(config, data_usage='valid')
+    
+    #Updated
+    trainset = SegDataset(config=config, data_usage='train')
+    validset = SegDataset(config=config, data_usage='valid')
 
-    trainloader = DataLoader(trainset, batch_size=1, shuffle=True)
-    validloader = DataLoader(validset, batch_size=1, shuffle=False)
+    #Updated
+    trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=4)
+    validloader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
     
     # --------------------------
     # initialize model
@@ -313,11 +315,13 @@ def train_surf(config):
     # load dataset
     # --------------------------
     logging.info("load dataset ...")
-    trainset = load_surf_data(config, 'train')
-    validset = load_surf_data(config, 'valid')
+    #Updated
+    trainset = BrainDataset(config, 'train')
+    validset = BrainDataset(config, 'valid')
 
-    trainloader = DataLoader(trainset, batch_size=1, shuffle=True)
-    validloader = DataLoader(validset, batch_size=1, shuffle=False)
+    #Updated
+    trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=4)
+    validloader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
     
     # --------------------------
     # training
@@ -460,6 +464,7 @@ def train_surf(config):
 
 
 if __name__ == '__main__':
+    mp.set_start_method('spawn')
     config = load_config()
     if config.train_type == 'surf':
         train_surf(config)

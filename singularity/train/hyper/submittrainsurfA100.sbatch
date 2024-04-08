@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -n 1
 #SBATCH -c 16
-#SBATCH --mem=180g
+#SBATCH --mem=110g
 #SBATCH -p qTRDGPUH
 #SBATCH --gres=gpu:A100:1
 #SBATCH -t 5-00:00

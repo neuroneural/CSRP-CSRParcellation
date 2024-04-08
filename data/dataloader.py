@@ -20,40 +20,46 @@ class SegData():
         self.vol = torch.Tensor(vol)
         self.seg = torch.Tensor(seg)
         self.subj_id = subj_id[0]
-        vol = []
-        seg = []
+    
+    def getSeg(self):
+        return self.vol, self.seg, self.subj_id
 
-        
+
 class SegDataset(Dataset):
-    def __init__(self, data):
-        super(Dataset, self).__init__()
-        self.data = data
-
+    def __init__(self, config, data_usage='train'):
+        """
+        Initializes the dataset with configurations for lazy loading.
+        Args:
+            config: Configuration object containing dataset parameters.
+            data_usage: Specifies the dataset split to use ('train', 'valid', 'test').
+        """
+        self.config = config
+        self.data_usage = data_usage
+        self.data_dir = os.path.join(config.data_dir, data_usage)
+        self.subject_list = sorted(os.listdir(self.data_dir))
+        
     def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, i):
-        brain = self.data[i]
-        return brain.vol, brain.seg, brain.subj_id
+        return len(self.subject_list)
     
+    def __getitem__(self, idx):
+        subid = self.subject_list[idx]
+        vol, seg = self._load_seg_data_for_subject(subid,self.config,self.data_usage)
+        return vol, seg, subid
     
-def load_seg_data(config, data_usage='train'):
-    """
-    data_dir: the directory of your dataset
-    data_name: [hcp, adni, dhcp, ...]
-    data_usage: [train, valid, test]
-    """
-    
-    data_name = config.data_name
-    data_dir = config.data_dir
-    data_dir = data_dir + data_usage + '/'
+    def _load_seg_data_for_subject(self, subid,config,data_usage):
+        """
+        data_dir: the directory of your dataset
+        data_name: [hcp, adni, dhcp, ...]
+        data_usage: [train, valid, test]
+        """
+        
+        data_name = config.data_name
+        data_dir = config.data_dir
+        data_dir = data_dir + data_usage + '/'
 
-    subject_list = sorted(os.listdir(data_dir))
-    data_list = []
-
-    for i in tqdm(range(len(subject_list))):
-        subid = subject_list[i]
-
+        subject_list = sorted(os.listdir(data_dir))
+        
+        
         if data_name == 'hcp' or data_name == 'adni':
             brain = nib.load(data_dir+subid+'/mri/orig.mgz')
             brain_arr = brain.get_fdata()
@@ -69,7 +75,7 @@ def load_seg_data(config, data_usage='train'):
             seg_arr = np.zeros_like(seg_left, dtype=int)  # final label
             seg_arr += 1 * seg_left
             seg_arr += 2 * seg_right
-    
+
         elif data_name == 'dhcp':
             brain = nib.load(data_dir+subid+'/'+subid+'_T2w.nii.gz')
             brain_arr = brain.get_fdata()
@@ -80,16 +86,7 @@ def load_seg_data(config, data_usage='train'):
             seg_arr = np.load(data_dir+subid+'/'+subid+'_wm_label.npy', allow_pickle=True)
             seg_arr = process_volume(seg_arr, data_name)[0]
             
-        segdata = SegData(vol=brain_arr, seg=seg_arr,subj_id=subid)
-        # add to data list
-        data_list.append(segdata)
-
-    # make dataset
-    dataset = SegDataset(data_list)
-    
-    return dataset
-
-
+        return SegData(vol=brain_arr, seg=seg_arr,subj_id=subid).getSeg()
 
 # ----------------------------
 #  for surface reconstruction
@@ -108,58 +105,60 @@ class BrainData():
         self.v_gt = torch.Tensor(v_gt)
         self.f_gt = torch.LongTensor(f_gt)
         self.volume = torch.from_numpy(volume)
-        # free the memory
-        volume = []
-        v_in = []
-        f_in = []
-        v_gt = []
-        f_gt = []
+    
+    def getBrain(self):
+        return self.volume, self.v_in, self.v_gt, self.f_in, self.f_gt
         
         
 class BrainDataset(Dataset):
-    def __init__(self, data):
-        super(Dataset, self).__init__()
-        self.data = data
-
+    def __init__(self, config, data_usage='train'):
+        """
+        Initializes the dataset with configurations and prepares
+        a list of subject IDs for lazy loading.
+        """
+        self.data_dir = os.path.join(config.data_dir, data_usage)
+        self.subject_list = sorted(os.listdir(self.data_dir))
+        self.config = config
+        self.data_usage = data_usage
+        
+        
     def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, i):
-        brain = self.data[i]
-        return brain.volume, brain.v_in, brain.v_gt,\
-                brain.f_in, brain.f_gt
-
-
-def load_surf_data(config, data_usage='train'):
-    """
-    data_dir: the directory of your dataset
-    init_dir: the directory of created initial surfaces
-    data_name: [hcp, adni, ...]
-    data_usage: [train, valid, test]
-    surf_type: [wm, gm]
-    surf_hemi: [lh, rh]
-    n_inflate: num of iterations for WM surface inflation
-    rho: inflation scale
-    lambd: weight for Laplacian smoothing
-    """
+        return len(self.subject_list)
     
-    data_dir = config.data_dir
-    data_dir = data_dir + data_usage + '/'
-    data_name = config.data_name
-    init_dir = config.init_dir + data_usage + '/'
-    surf_type = config.surf_type
-    surf_hemi = config.surf_hemi
-    device = config.device
-
-    n_inflate = config.n_inflate   # 2
-    rho = config.rho    # 0.002
-    lambd = config.lambd
+    def __getitem__(self, idx):
+        subid = self.subject_list[idx]
+        # Load data for the subject identified by `subid`
+        # Similar to the logic you've written inside your loop
+        # but adjusted to load data for one subject only
+        # For example:
+        brain_arr, v_in, v_gt, f_in, f_gt = self._load_surf_data_for_subject(subid,self.config,self.data_usage)
+        
+        return brain_arr, v_in, v_gt, f_in, f_gt
     
-    subject_list = sorted(os.listdir(data_dir))
-    data_list = []
+    def _load_surf_data_for_subject(self, subid,config,data_usage):
+        """
+        data_dir: the directory of your dataset
+        init_dir: the directory of created initial surfaces
+        data_name: [hcp, adni, ...]
+        data_usage: [train, valid, test]
+        surf_type: [wm, gm]
+        surf_hemi: [lh, rh]
+        n_inflate: num of iterations for WM surface inflation
+        rho: inflation scale
+        lambd: weight for Laplacian smoothing
+        """
+        
+        data_dir = config.data_dir
+        data_dir = data_dir + data_usage + '/'
+        data_name = config.data_name
+        init_dir = config.init_dir + data_usage + '/'
+        surf_type = config.surf_type
+        surf_hemi = config.surf_hemi
+        device = config.device
 
-    for i in tqdm(range(len(subject_list))):
-        subid = subject_list[i]
+        n_inflate = config.n_inflate   # 2
+        rho = config.rho    # 0.002
+        lambd = config.lambd
         
         # ------- load brain MRI ------- 
         if data_name == 'hcp' or data_name == 'adni':
@@ -245,14 +244,7 @@ def load_surf_data(config, data_usage='train'):
                 v_tmp[:,:3] = v_gt
                 v_gt = v_tmp.dot(np.linalg.inv(brain.affine).T)[:,:3]
             v_gt, f_gt = process_surface(v_gt, f_gt, data_name)
-            
-        braindata = BrainData(volume=brain_arr, v_in=v_in, v_gt=v_gt,
-                              f_in=f_in, f_gt=f_gt)
-        # add to data list
-        data_list.append(braindata)
         
-    # make dataset
-    dataset = BrainDataset(data_list)
-#     torch.cuda.empty_cache()
-    
-    return dataset
+        return BrainData(volume=brain_arr, v_in=v_in, v_gt=v_gt,
+                              f_in=f_in, f_gt=f_gt).getBrain()
+
