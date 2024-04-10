@@ -7,8 +7,8 @@ cd /cortexode
 # Parameters setup
 declare -a versions=("1" "2")
 declare -a gnns=("gcn" "gat")
-declare -a gnn_layers=(3 4 5)
-declare -a gat_heads=(1 2 3)
+declare -a gnn_layers=(5)
+declare -a gat_heads=(2)
 
 # Assuming $1 is provided as the equivalent of a job index
 job_id=$1
@@ -50,7 +50,7 @@ echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, 
 
 
 #python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=100 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
-python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_2/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_2/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=40 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
+python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_2/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_2/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=30 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
 
 #python train.py --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_v2/model/' --init_dir='/cortexode/ckpts/exp_csrf_v2/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=401 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu'
 #python train.py --train_type='surf' --data_dir='/speedrun/csrf-data-dev/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=1 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu'

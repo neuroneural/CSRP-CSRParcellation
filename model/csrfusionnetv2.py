@@ -38,6 +38,13 @@ class NodeFeatureNet(nn.Module):
         self.cubes = torch.zeros([1, self.Q, self.K, self.K, self.K])
 
     def forward(self, v):
+        assert v.dim() == 3, f"Tensor must have 3 dimensions {v.shape}"
+        assert v.size(0) == 1, "The size of the first dimension must be 0"
+        assert v.size(2) == 3, "The size of the last dimension must be 3"
+        assert self.f.dim() == 3, f"Tensor must have 3 dimensions {self.f.shape}"
+        assert self.f.size(0) == 1, "The size of the first dimension must be 0"
+        assert self.f.size(2) == 3, "The size of the last dimension must be 3"
+
         z_local = self.cube_sampling(v)
         z_local = self.localconv(z_local)
         z_local = z_local.view(-1, self.m, self.C)
@@ -101,9 +108,10 @@ class NodeFeatureNet(nn.Module):
 class DeformBlockGNN(nn.Module):
     def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True,use_residual=True, use_layernorm=True, gat_heads=8):
         super(DeformBlockGNN, self).__init__()
+        self.sf=sf
         self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale)
         # Initialize ResidualGNN with parameters adjusted for the task
-        self.gnn = ResidualGNN(input_features=C*2,  # Adjust based on NodeFeatureNet output
+        self.gnn = ResidualGNN(input_features=2*C,  # Adjust based on NodeFeatureNet output
                                    hidden_features=C,
                                    num_classes=3,  # Assuming 3D deformation vector
                                    num_layers=gnn_layers,
@@ -111,7 +119,7 @@ class DeformBlockGNN(nn.Module):
                                    dropout=0.1,
                                    pool_ratio=1.0,
                                    use_pooling=False,  # Based on application need
-                                   use_residual=use_residual,
+                                   use_residual=False,
                                    use_layernorm=use_layernorm,
                                    use_gcn=use_gcn,  # Choose between GCN and GAT
                                    final_activation='tanh')  # Based on deformation requirements
@@ -126,6 +134,7 @@ class DeformBlockGNN(nn.Module):
     
     def forward(self, v):
         x = self.nodeFeatureNet(v)
+        x = x.squeeze()
         dx = self.gnn(x, self.edge_list)*self.sf #threshold the deformation like before
         return dx
 
@@ -133,14 +142,12 @@ class CSRFnetV2(nn.Module):
     """
     The deformation network of CortexODE model.
 
-    dim_in: input dimension
     dim_h (C): hidden dimension
     kernel_size (K): size of convolutional kernels
     n_scale (Q): number of scales of the multi-scale input
     """
     
-    def __init__(self, dim_in=3,
-                       dim_h=128,
+    def __init__(self, dim_h=128,
                        kernel_size=5,
                        n_scale=3,
                        sf=.1,
@@ -150,7 +157,7 @@ class CSRFnetV2(nn.Module):
                        use_layernorm=True,
                        gat_heads=8):
         
-        super(CSRFnet, self).__init__()
+        super(CSRFnetV2, self).__init__()
 
         C = dim_h        # hidden dimension
         K = kernel_size  # kernel size
@@ -186,7 +193,6 @@ class CSRFnetV2(nn.Module):
         
     #this method gets called by odeint, and thus the method signature has t in it even though the t is ignored
     def forward(self, t, x):
-        
         dx = self.block1(x)
         
         dx = dx.unsqueeze(0)

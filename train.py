@@ -11,6 +11,7 @@ from data.dataloader import SegDataset, BrainDataset
 from model.net import CortexODE, Unet
 from model.csrfusionnet import CSRFnet
 from model.csrfusionnetv2 import CSRFnetV2
+from model.csrfusionnetv3 import CSRFnetV3
 from model.segmenterfactory import SegmenterFactory
 from util.mesh import compute_dice
 
@@ -270,14 +271,25 @@ def train_surf(config):
     # --------------------------
     logging.info("initalize model ...")
     
-    if config.model_type == 'csrf':
+    if config.model_type == 'csrf' and config.version==1:
+        print('csrf version 1')
         cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        gnnVersion=gnnVersion,
                        gat_heads=config.gat_heads).to(device)
-    elif config.model_type == 'csrfv2':
-        cortexode = CSRFnetV2(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
+    elif config.model_type == 'csrf' and config.version==2:
+        print('csrf version 2')
+        cortexode = CSRFnetV2(dim_h=C, kernel_size=K, n_scale=Q,
+                       sf=config.sf,
+                       gnn_layers=config.gnn_layers,
+                       use_gcn=use_gcn,
+                       use_residual=use_residual,
+                       use_layernorm = use_layernorm,
+                       gat_heads=config.gat_heads).to(device)
+    elif config.model_type == 'csrf' and config.version==3:
+        print('csrf version 3')
+        cortexode = CSRFnetV3(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
