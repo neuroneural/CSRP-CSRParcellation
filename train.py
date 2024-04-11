@@ -252,13 +252,7 @@ def train_surf(config):
     else:
         assert False, f"unsupported gnn configuration {config.gnn}"    
     
-    if config.use_residual=='yes':
-        use_residual=True
-    elif config.use_residual=='no':
-        use_residual=False
-    else:
-        assert False, f"unsupported residual parameter {config.use_residual}"
-    
+        
     if config.use_layernorm=='yes':
         use_layernorm=True
     elif config.use_layernorm=='no':
@@ -284,7 +278,6 @@ def train_surf(config):
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_residual=use_residual,
                        use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
     elif config.model_type == 'csrf' and config.version==3:
@@ -293,7 +286,6 @@ def train_surf(config):
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_residual=use_residual,
                        use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
     else:

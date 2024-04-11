@@ -29,8 +29,7 @@ def load_config():
     parser.add_argument('--gat_heads', default=8, type=int, help="num of gnn heads [8,16,32,64]")
     
     #version 2 params, don't permute these for search in version 1 (wastes time, will be ignored in version 1):
-    parser.add_argument('--use_residual', default='no', type=str, help="use residual connection:[yes,no]")
-    parser.add_argument('--use_layernorm', default='no', type=str, help="use layer norm:[yes,no]")
+    parser.add_argument('--use_layernorm', default='yes', type=str, help="use layer norm:[yes,no]")
     
     parser.add_argument('--solver', default='euler', type=str, help="ODE solver: [euler, midpoint, rk4]")
     parser.add_argument('--step_size', default=0.2, type=float, help="step size of the ODE solver")

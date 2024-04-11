@@ -10,7 +10,7 @@ from torch_geometric.nn import GATConv
 
 from util.mesh import compute_normal
 
-from model.residualgnn import ResidualGNN
+from model.deformationgnn import DeformationGNN
 
 class NodeFeatureNet(nn.Module):
     def __init__(self, C=128, K=5, n_scale=1):
@@ -27,7 +27,7 @@ class NodeFeatureNet(nn.Module):
         Q = n_scale      # number of scales
         
         self.n_scale = n_scale
-        self.K = K
+        self.K = K        
         self.C = C
         self.Q = Q
         # for cube sampling
@@ -38,13 +38,7 @@ class NodeFeatureNet(nn.Module):
         self.cubes = torch.zeros([1, self.Q, self.K, self.K, self.K])
 
     def forward(self, v):
-        assert v.dim() == 3, f"Tensor must have 3 dimensions {v.shape}"
-        assert v.size(0) == 1, "The size of the first dimension must be 0"
-        assert v.size(2) == 3, "The size of the last dimension must be 3"
-        assert self.f.dim() == 3, f"Tensor must have 3 dimensions {self.f.shape}"
-        assert self.f.size(0) == 1, "The size of the first dimension must be 0"
-        assert self.f.size(2) == 3, "The size of the last dimension must be 3"
-
+        
         z_local = self.cube_sampling(v)
         z_local = self.localconv(z_local)
         z_local = z_local.view(-1, self.m, self.C)
@@ -106,20 +100,19 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
     
 class DeformBlockGNN(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True,use_residual=True, use_layernorm=True, gat_heads=8):
+    def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True, use_layernorm=True, gat_heads=8):
         super(DeformBlockGNN, self).__init__()
         self.sf=sf
         self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale)
         # Initialize ResidualGNN with parameters adjusted for the task
-        self.gnn = ResidualGNN(input_features=2*C,  # Adjust based on NodeFeatureNet output
-                                   hidden_features=C,
-                                   num_classes=3,  # Assuming 3D deformation vector
+        self.gnn = DeformationGNN(input_features=2*C,  # Adjust based on NodeFeatureNet output
+                                   hidden_features=2*C,
+                                   output_dim=3,  # Assuming 3D deformation vector
                                    num_layers=gnn_layers,
                                    gat_heads=gat_heads,  # Adjust as needed
                                    dropout=0.1,
                                    pool_ratio=1.0,
                                    use_pooling=False,  # Based on application need
-                                   use_residual=False,
                                    use_layernorm=use_layernorm,
                                    use_gcn=use_gcn,  # Choose between GCN and GAT
                                    final_activation='tanh')  # Based on deformation requirements
@@ -169,7 +162,6 @@ class CSRFnetV2(nn.Module):
                                      sf,
                                      gnn_layers=gnn_layers,
                                      use_gcn=use_gcn,
-                                     use_residual=use_residual,
                                      use_layernorm=use_layernorm,
                                      gat_heads=gat_heads)
         

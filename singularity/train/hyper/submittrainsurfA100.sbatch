@@ -23,15 +23,15 @@ pid1=$!  # Store the process ID of the first process
 singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/train/hyper/trainsurflhgm.sh $SLURM_ARRAY_TASK_ID&
 pid2=$!  # Store the process ID of the second process
 
-singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/train/hyper/trainsurfrhwm.sh $SLURM_ARRAY_TASK_ID&
-pid3=$!  # Store the process ID of the first process
+# singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/train/hyper/trainsurfrhwm.sh $SLURM_ARRAY_TASK_ID&
+# pid3=$!  # Store the process ID of the first process
 
-singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/train/hyper/trainsurfrhgm.sh $SLURM_ARRAY_TASK_ID&
-pid4=$!  # Store the process ID of the second process
+# singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/train/hyper/trainsurfrhgm.sh $SLURM_ARRAY_TASK_ID&
+# pid4=$!  # Store the process ID of the second process
 
 wait $pid1
 wait $pid2
-wait $pid3
-wait $pid4
+# wait $pid3
+# wait $pid4
 
 sleep 10s
