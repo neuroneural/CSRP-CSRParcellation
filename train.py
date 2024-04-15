@@ -38,10 +38,12 @@ def train_seg(config):
     device = config.device
     tag = config.tag
     n_epochs = config.n_epochs
+    start_epoch = config.start_epoch
     lr = config.lr
     
     # start training logging
     logging.basicConfig(filename=model_dir+'model_seg_'+data_name+'_'+tag+'.log',
+                        filemode='a',
                         level=logging.INFO, format='%(asctime)s %(message)s')
     
     # --------------------------
@@ -72,7 +74,27 @@ def train_seg(config):
         segnet = SegmenterFactory.get_segmenter("SegUnet",device)
     else:
         assert False, "Config model name is incorrect"
+    
+    model_path = None
+    
+    if config.model_file:
+        print('loading model',config.model_file)
+        print('hemi', config.surf_hemi)
+        print('surftype', config.surf_type)
         
+        start_epoch = int(config.start_epoch)
+        model_path = os.path.join(config.model_dir, config.model_file)
+    
+    # Load model state if a model path is provided
+    if model_path and os.path.isfile(model_path):
+        print('device', config.device)
+        segnet.load_state_dict(torch.load(model_path, map_location=torch.device(config.device)))
+        print(f"Model loaded from {model_path}")
+    else:
+        print("No model file provided or file does not exist. Starting from scratch.")
+    
+    print('start epoch',start_epoch)
+    
     
     optimizer = optim.Adam(segnet.parameters(), lr=lr)
     # in case you need to load a checkpoint
@@ -84,7 +106,7 @@ def train_seg(config):
     # --------------------------
     logging.info("start training ...")
         
-    for epoch in tqdm(range(n_epochs)):
+    for epoch in tqdm(range(start_epoch, n_epochs + 1)):
         avg_loss = []
         for idx, data in enumerate(trainloader):
             volume_in, seg_gt = data
@@ -133,8 +155,8 @@ def train_seg(config):
 
 
         logging.info("epoch:{}, loss:{}".format(epoch,np.mean(avg_loss)))
-
-        if epoch % 10 == 0 or epoch == n_epochs - 1:
+        
+        if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
             logging.info('-------------validation--------------')
             with torch.no_grad():
                 avg_error = []
@@ -176,7 +198,7 @@ def train_seg(config):
                 logging.info("Dice score:{}".format(np.mean(avg_dice)))
                 logging.info('-------------------------------------')
         # save model checkpoints
-        if epoch % 10 == 0 or epoch == n_epochs - 1:
+        if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
             torch.save(segnet.state_dict(),
                        model_dir+'model_seg_'+data_name+'_'+tag+'_'+str(epoch)+'epochs.pt')
     # save final model
@@ -220,6 +242,7 @@ def train_surf(config):
     tag = config.tag
     
     n_epochs = config.n_epochs
+    start_epoch = config.start_epoch
     n_samples = config.n_samples
     lr = config.lr
     
@@ -291,7 +314,6 @@ def train_surf(config):
     else:
         cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
     
-    start_epoch = 0
     model_path = None
     
     if config.model_file:
@@ -299,8 +321,7 @@ def train_surf(config):
         print('hemi', config.surf_hemi)
         print('surftype', config.surf_type)
         
-        match = re.search(r'(\d+)epochs', config.model_file)
-        start_epoch = int(match.group(1)) if match else 0
+        start_epoch = int(config.start_epoch)
         model_path = os.path.join(config.model_dir, config.model_file)
     
     # Load model state if a model path is provided
@@ -332,8 +353,7 @@ def train_surf(config):
     # --------------------------
     
     logging.info("start training ...")
-    n_epochs = n_epochs - start_epoch
-    for epoch in tqdm(range(n_epochs)):
+    for epoch in tqdm(range(start_epoch, n_epochs + 1)):
         avg_loss = []
         for idx, data in enumerate(trainloader):
             volume_in, v_in, v_gt, f_in, f_gt = data
@@ -377,9 +397,9 @@ def train_surf(config):
             loss.backward()
             optimizer.step()
 
-        logging.info('epoch:{}, loss:{}'.format(start_epoch+epoch, np.mean(avg_loss)))
+        logging.info('epoch:{}, loss:{}'.format(epoch, np.mean(avg_loss)))
         
-        if (start_epoch+epoch) % 10 == 0 or epoch == n_epochs - 1:
+        if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
             logging.info('-------------validation--------------')
             with torch.no_grad():
                 valid_error = []
@@ -403,7 +423,7 @@ def train_surf(config):
                                    options=dict(step_size=step_size))[-1]
                     valid_error.append(1e3 * chamfer_distance(v_out, v_gt)[0].item())
                         
-                logging.info('epoch:{}, validation error:{}'.format(start_epoch+epoch, np.mean(valid_error)))
+                logging.info('epoch:{}, validation error:{}'.format(epoch, np.mean(valid_error)))
                 logging.info('-------------------------------------')
                 # Log to CSV
                 csv_log_path = os.path.join(model_dir, f"training_log_{tag}.csv")
@@ -422,7 +442,7 @@ def train_surf(config):
                             'surf_hemi' : surf_hemi,
                             'surf_type' : surf_type,
                             'version' : config.version,
-                            'epoch': start_epoch+epoch,
+                            'epoch': epoch,
                             'training_loss': avg_training_loss,  # Include training loss here
                             'validation_error': np.mean(valid_error),
                             'gnn': config.gnn,
@@ -435,7 +455,7 @@ def train_surf(config):
                             'surf_hemi' : surf_hemi,
                             'surf_type' : surf_type,
                             'version' : config.version,
-                            'epoch': start_epoch+epoch,
+                            'epoch': epoch,
                             'training_loss': avg_training_loss,  # Include training loss here
                             'validation_error': np.mean(valid_error),
                             'gnn': config.gnn,
@@ -446,11 +466,11 @@ def train_surf(config):
 
         
         # save model checkpoints 
-        if (start_epoch+epoch) % 10 == 0 or epoch == n_epochs - 1:
+        if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
             if config.gnn=='gat':
-                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{start_epoch+epoch}epochs.pt"
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{epoch}epochs.pt"
             elif config.gnn =='gcn':
-                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{start_epoch+epoch}epochs.pt"
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{epoch}epochs.pt"
             else:
                 assert False,'update naming conventions for model file name'
             

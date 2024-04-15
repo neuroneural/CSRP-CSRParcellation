@@ -54,7 +54,9 @@ class DeformationGNN(nn.Module):
                 x = self.dropouts[i](x)
             if self.pools and i < len(self.pools):
                 x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None)
-
+            print('x',x.shape)
+            print('edge_index',edge_index.shape)
+            print('i',i)
         #removed global pooling because of node classification. 
         
         if self.final_activation == 'log_softmax':
