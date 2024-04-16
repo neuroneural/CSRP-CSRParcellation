@@ -31,7 +31,7 @@ class DeformationGNN(nn.Module):
             
             if use_layernorm:
                 # When adding to your model
-                self.norms.append(PyGLayerNorm(next_dim, mode='graph'))
+                self.norms.append(PyGLayerNorm(next_dim, mode='node'))
             if use_pooling and i < num_layers - 1:  # No pooling after the last convolutional layer
                 self.pools.append(TopKPooling(next_dim, ratio=pool_ratio))
             if dropout is not None:
@@ -49,14 +49,12 @@ class DeformationGNN(nn.Module):
             x = layer(x, edge_index)
             if self.norms and i < len(self.norms):
                 x = self.norms[i](x)
-            x = F.relu(x)
+            if i < len(self.layers) -1:#it is a bug to apply relu to last layer only allows positive delta. 
+                x = F.relu(x)
             if self.dropouts and i < len(self.dropouts):
                 x = self.dropouts[i](x)
             if self.pools and i < len(self.pools):
                 x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None)
-            print('x',x.shape)
-            print('edge_index',edge_index.shape)
-            print('i',i)
         #removed global pooling because of node classification. 
         
         if self.final_activation == 'log_softmax':

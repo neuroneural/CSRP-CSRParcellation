@@ -106,7 +106,7 @@ class DeformBlockGNN(nn.Module):
         self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale)
         # Initialize ResidualGNN with parameters adjusted for the task
         self.gnn = DeformationGNN(input_features=2*C,  # Adjust based on NodeFeatureNet output
-                                   hidden_features=2*C,
+                                   hidden_features=C,
                                    output_dim=3,  # Assuming 3D deformation vector
                                    num_layers=gnn_layers,
                                    gat_heads=gat_heads,  # Adjust as needed
