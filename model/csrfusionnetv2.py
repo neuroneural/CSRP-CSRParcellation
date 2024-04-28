@@ -110,12 +110,11 @@ class DeformBlockGNN(nn.Module):
                                    output_dim=3,  # Assuming 3D deformation vector
                                    num_layers=gnn_layers,
                                    gat_heads=gat_heads,  # Adjust as needed
-                                   dropout=0.1,
                                    pool_ratio=1.0,
                                    use_pooling=False,  # Based on application need
                                    use_layernorm=use_layernorm,
                                    use_gcn=use_gcn,  # Choose between GCN and GAT
-                                   final_activation='tanh')  # Based on deformation requirements
+                                   final_activation='None')  # Based on deformation requirements
     
     def set_data(self, x, V,f=None,edge_list=None):
         # x: coordinats

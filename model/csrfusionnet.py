@@ -171,7 +171,6 @@ class DeformBlockGNN(nn.Module):
     def __init__(self, C=128, K=5, n_scale=3,sf=.1,gnn_layers=2,gnnVersion=2,gat_heads=8):
         super(DeformBlockGNN, self).__init__()
         self.nodeFeatureNet = NodeFeatureNet(C=C,K=K,n_scale=n_scale)
-        #chatgpt,declare a custom 2 layer gcn here that takes features from nodeFeatureNet to predict node features, use a tanh nonlinearity at the end instead of softmax. 
         self.n_scale = n_scale
         self.C = C
         self.K = K

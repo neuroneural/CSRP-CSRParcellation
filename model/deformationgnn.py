@@ -6,13 +6,12 @@ from torch_geometric.nn import LayerNorm as PyGLayerNorm
 
 
 class DeformationGNN(nn.Module):
-    def __init__(self, input_features=128, hidden_features=128, output_dim=3, num_layers=2, gat_heads=8, dropout=0.1, pool_ratio=.9, use_pooling=False, use_layernorm=False, use_gcn=True, final_activation='tanh'):
+    def __init__(self, input_features=128, hidden_features=128, output_dim=3, num_layers=2, gat_heads=8, pool_ratio=.9, use_pooling=False, use_layernorm=False, use_gcn=True, final_activation='tanh'):
         super(DeformationGNN, self).__init__()
         
         self.layers = nn.ModuleList()
         self.norms = nn.ModuleList() if use_layernorm else None
         self.pools = nn.ModuleList() if use_pooling else None
-        self.dropouts = nn.ModuleList() if dropout is not None else None
         self.num_layers = num_layers
         self.final_activation = final_activation
         current_dim = input_features
@@ -34,14 +33,15 @@ class DeformationGNN(nn.Module):
                 self.norms.append(PyGLayerNorm(next_dim, mode='node'))
             if use_pooling and i < num_layers - 1:  # No pooling after the last convolutional layer
                 self.pools.append(TopKPooling(next_dim, ratio=pool_ratio))
-            if dropout is not None:
-                self.dropouts.append(nn.Dropout(dropout))
-
         
         if use_gcn:
             self.layers.append(GCNConv(hidden_features, output_dim))
         else:
             self.layers.append(GATConv(current_dim, output_dim, heads=1))
+        
+        print('use_layernorm', use_layernorm)
+        
+        print('activation', final_activation)
 
     def forward(self, x, edge_index):
         
@@ -51,8 +51,6 @@ class DeformationGNN(nn.Module):
                 x = self.norms[i](x)
             if i < len(self.layers) -1:#it is a bug to apply relu to last layer only allows positive delta. 
                 x = F.relu(x)
-            if self.dropouts and i < len(self.dropouts):
-                x = self.dropouts[i](x)
             if self.pools and i < len(self.pools):
                 x, edge_index, _, batch, _, _ = self.pools[i](x, edge_index, None)
         #removed global pooling because of node classification. 

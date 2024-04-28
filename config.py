@@ -21,7 +21,7 @@ def load_config():
     parser.add_argument('--tag', default='0000', type=str, help="identity for experiments")
 
     
-    parser.add_argument('--version', default="1", type=int, help="either: [1,2,3]")
+    parser.add_argument('--version', default="1", type=str, help="either: [1,2,3]")
     
     #version 1 params:
     parser.add_argument('--gnn', default="gcn", type=str, help="either: [gcn,gat]")
@@ -33,7 +33,7 @@ def load_config():
     parser.add_argument('--use_layernorm', default='no', type=str, help="use layer norm:[yes,no]")
     
     parser.add_argument('--solver', default='euler', type=str, help="ODE solver: [euler, midpoint, rk4]")
-    parser.add_argument('--step_size', default=0.2, type=float, help="step size of the ODE solver")
+    parser.add_argument('--step_size', default=0.1, type=float, help="step size of the ODE solver")
     parser.add_argument('--lambd', default=1.0, type=float, help="Laplacian smooth weight")
     parser.add_argument('--n_inflate', default=2, type=int, help="num of interations of Laplacian smoothing and inflating")
     parser.add_argument('--rho', default=0.002, type=float, help="inflation scale of normals")

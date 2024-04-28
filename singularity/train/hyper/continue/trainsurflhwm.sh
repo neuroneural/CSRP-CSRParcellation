@@ -5,10 +5,10 @@
 cd /cortexode
 
 # Parameters setup
-declare -a versions=("2L")
+declare -a versions=("2")
 declare -a gnns=("gat")  # Assuming "gcn" might not be included
-declare -a gnn_layers=(4)
-declare -a gat_heads=(1 2)
+declare -a gnn_layers=(2 3 4)
+declare -a gat_heads=(1)
 
 
 # Assuming $1 is provided as the equivalent of a job index
@@ -19,6 +19,10 @@ version=""
 gnn=""
 gnn_layer=""
 gat_head=8  # Default value for gat_heads, might be adjusted based on job configuration
+hemi='lh'
+stype='wm'
+cont_epoch=30
+
 
 # Check if GNN types include "gcn" or "gat"
 gcn_included=$(printf '%s\n' "${gnns[@]}" | grep -w "gcn" -c)
@@ -62,8 +66,31 @@ else
     gat_head=${gat_heads[$gat_head_index]}
 fi
 
+
+pattern="model_${stype}_adni_${hemi}_csrf_v${version}_gnn${gnn}_layers${gnn_layer}_sf0.1_heads${gat_head}_${cont_epoch}epochs.pt"
+
+model_dir="/cortexode/ckpts/exp_csrf_gnn_2/model/"
+model_file=""
+
+for file in $model_dir$model_*.pt; do
+    
+    if [[ "$file" =~ $pattern ]]; then
+        echo "Matching model file: $file"
+        model_file=$file
+        break
+    fi
+done
+
+if [ -z "$model_file" ]; then
+    echo "No matching model file found."
+else
+    echo "Model file to use: $model_file"
+    # Here you can add commands that use $model_file, for example:
+    # python continue_training.py --model_file "$model_file"
+fi
+
 # Execute Python script with parameters set above
 echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, GAT Heads $gat_head"
 #python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=100 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
 #python train.py --model_file 'model_wm_adni_lh_csrf_v1_gnngat_layers5_sf0.1_heads1_29epochs.pt' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_2/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_2/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=60 --start_epoch=31 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
-python train.py --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_2/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_2/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=30 --start_epoch=1 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
+python train.py --model_file=$model_file --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_2/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_2/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=60 --start_epoch=31 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 

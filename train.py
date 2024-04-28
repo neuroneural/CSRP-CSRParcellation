@@ -288,23 +288,30 @@ def train_surf(config):
     # --------------------------
     logging.info("initalize model ...")
     
-    if config.model_type == 'csrf' and config.version==1:
-        print('csrf version 1')
+    print('csrf version ', config.version)
+        
+    if config.model_type == 'csrf' and config.version=='1':
         cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        gnnVersion=gnnVersion,
                        gat_heads=config.gat_heads).to(device)
-    elif config.model_type == 'csrf' and config.version==2:
-        print('csrf version 2')
+    elif config.model_type == 'csrf' and config.version=='2':
         cortexode = CSRFnetV2(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
                        use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
-    elif config.model_type == 'csrf' and config.version==3:
-        print('csrf version 3')
+    elif config.model_type == 'csrf' and config.version=='2L':
+        cortexode = CSRFnetV2(dim_h=C, kernel_size=K, n_scale=Q,
+                       sf=config.sf,
+                       gnn_layers=config.gnn_layers,
+                       use_gcn=use_gcn,
+                       use_layernorm = use_layernorm,
+                       gat_heads=config.gat_heads).to(device)
+    elif config.model_type == 'csrf' and config.version=='3':
+        assert False, 'currently unsupported'
         cortexode = CSRFnetV3(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
