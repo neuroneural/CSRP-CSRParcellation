@@ -43,6 +43,7 @@ def plot_epochs_validation(input_csv):
 
     # Save the plot
     plt.savefig('validation_error_plots.png')
+    plt.savefig('validation_error_plots.svg')
     plt.show()
 
 # Usage
