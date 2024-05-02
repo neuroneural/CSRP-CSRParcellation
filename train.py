@@ -254,7 +254,7 @@ def train_surf(config):
     solver = config.solver    # ODE solver
     
     # create log file
-    log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}"
+    log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}"
 
     # If the GNN type is 'gat', include `gat_heads` in the filename
     if config.gnn == 'gat':
