@@ -120,6 +120,7 @@ class BrainDataset(Dataset):
         self.subject_list = sorted(os.listdir(self.data_dir))
         self.config = config
         self.data_usage = data_usage
+        self.mse_threshold = config.mse_threshold
         
         
     def __len__(self):
@@ -135,7 +136,117 @@ class BrainDataset(Dataset):
         
         return brain_arr, v_in, v_gt, f_in, f_gt
     
-    def _load_surf_data_for_subject(self, subid,config,data_usage):
+    # Function to calculate MSE
+    def _calculate_mse(self,original, noisy):
+        return 1000.0*np.mean((original - noisy) ** 2)
+
+    # Binary search to find the standard deviation
+    def _binary_search_mse(self,original_vertices, low, high, mse_threshold, tolerance):
+        while high - low > tolerance:
+            mid = (high + low) / 2
+            noise = np.random.randn(*original_vertices.shape) * mid
+            noisy_vertices = original_vertices + noise
+            mse = self._calculate_mse(original_vertices, noisy_vertices)
+            if mse < mse_threshold:
+                low = mid
+            else:
+                high = mid
+        return (high + low) / 2
+
+    def _load_surf_data_for_subject_self_supervised_gaussian(self, subid,config,data_usage):
+        """
+        data_dir: the directory of your dataset
+        init_dir: the directory of created initial surfaces
+        data_name: [hcp, adni, ...]
+        data_usage: [train, valid, test]
+        surf_type: [wm, gm]
+        surf_hemi: [lh, rh]
+        n_inflate: num of iterations for WM surface inflation
+        rho: inflation scale
+        lambd: weight for Laplacian smoothing
+        """
+        
+        data_dir = config.data_dir
+        data_dir = data_dir + data_usage + '/'
+        data_name = config.data_name
+        init_dir = config.init_dir + data_usage + '/'
+        surf_type = config.surf_type
+        surf_hemi = config.surf_hemi
+        device = config.device
+
+        n_inflate = config.n_inflate   # 2
+        rho = config.rho    # 0.002
+        lambd = config.lambd
+        
+        # ------- load brain MRI ------- 
+        if data_name == 'hcp' or data_name == 'adni':
+            brain = nib.load(data_dir+subid+'/mri/orig.mgz')
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 255.).astype(np.float32)
+        elif data_name == 'dhcp':
+            brain = nib.load(data_dir+subid+'/'+subid+'_T2w.nii.gz')
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 20).astype(np.float16)
+        brain_arr = process_volume(brain_arr, data_name)
+        
+        # ------- wm surface reconstruction ------- 
+        if surf_type == 'wm':
+            # ------- load gt surface ------- 
+            if data_name == 'hcp':
+                # depends on your FreeSurfer version
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(data_dir+subid+'/surf/'+surf_hemi+'.white.deformed')
+            elif data_name == 'adni':
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(data_dir+subid+'/surf/'+surf_hemi+'.white')
+            elif data_name == 'dhcp':
+                if surf_hemi == 'lh':
+                    surf_gt = nib.load(data_dir+subid+'/'+subid+'_left_wm.surf.gii')
+                    v_gt, f_gt = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
+                elif surf_hemi == 'rh':
+                    surf_gt = nib.load(data_dir+subid+'/'+subid+'_right_wm.surf.gii')
+                    v_gt, f_gt = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
+                # apply the affine transformation provided by brain MRI nifti
+                v_tmp = np.ones([v_gt.shape[0],4])
+                v_tmp[:,:3] = v_gt
+                v_gt = v_tmp.dot(np.linalg.inv(brain.affine).T)[:,:3]
+            v_gt, f_gt = process_surface(v_gt, f_gt, data_name)
+        # ------- pial surface reconstruction ------- 
+        elif surf_type == 'gm':
+            # ------- load gt surface ------- 
+            if data_name == 'hcp':
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(data_dir+subid+'/surf/'+surf_hemi+'.pial.deformed')
+            elif data_name == 'adni':
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(data_dir+subid+'/surf/'+surf_hemi+'.pial')
+            elif data_name == 'dhcp':
+                if surf_hemi == 'lh':
+                    surf_gt = nib.load(data_dir+subid+'/'+subid+'_left_pial.surf.gii')
+                    v_gt, f_gt = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
+                elif surf_hemi == 'rh':
+                    surf_gt = nib.load(data_dir+subid+'/'+subid+'_right_pial.surf.gii')
+                    v_gt, f_gt = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
+                v_tmp = np.ones([v_gt.shape[0],4])
+                v_tmp[:,:3] = v_gt
+                v_gt = v_tmp.dot(np.linalg.inv(brain.affine).T)[:,:3]
+            v_gt, f_gt = process_surface(v_gt, f_gt, data_name)
+        
+        v_in = v_gt.copy()
+        f_in = f_gt.copy()
+
+        # # Define parameters
+        
+        tolerance = 0.0001    # Define how close you want to get to the exact threshold
+        low, high = 0.01, 1.0  # Define the range for the standard deviation
+        
+        # Perform binary search
+        optimal_std_dev = self._binary_search_mse(v_in, low, high, self.mse_threshold, tolerance)
+
+        # Generate noise using the found standard deviation and create the final noisy mesh
+        optimal_noise = np.random.randn(*v_in.shape) * optimal_std_dev
+        v_in = v_in + optimal_noise
+        
+        return BrainData(volume=brain_arr, v_in=v_in, v_gt=v_gt,
+                              f_in=f_in, f_gt=f_gt).getBrain()
+        
+    def _load_surf_data_for_subject_baseline(self, subid,config,data_usage):
         """
         data_dir: the directory of your dataset
         init_dir: the directory of created initial surfaces
@@ -248,3 +359,11 @@ class BrainDataset(Dataset):
         return BrainData(volume=brain_arr, v_in=v_in, v_gt=v_gt,
                               f_in=f_in, f_gt=f_gt).getBrain()
 
+
+    def _load_surf_data_for_subject(self, subid,config,data_usage):
+        if config.train_type == 'surf':
+            return self._load_surf_data_for_subject_baseline(subid,config,data_usage)
+        elif config.train_type == 'self_surf':
+            return self._load_surf_data_for_subject_self_supervised_gaussian(subid,config,data_usage)
+        else:
+            assert False

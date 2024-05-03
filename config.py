@@ -14,20 +14,25 @@ def load_config():
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--start_epoch', default=1, type=int, help="start counting at 1 for start epochs.")
     parser.add_argument('--data_name', default="hcp", type=str, help="name of the dataset")
-    parser.add_argument('--train_type', default="surf", type=str, help="type of training: [seg, surf]")
+    parser.add_argument('--train_type', default="surf", type=str, help="type of training: [seg, surf,self_surf]")
     parser.add_argument('--surf_type', default="wm", type=str, help="type of the surface: [wm, gm]")
     parser.add_argument('--surf_hemi', default="lh", type=str, help="left or right hemisphere: [lh, rh]")
     parser.add_argument('--device', default="gpu", type=str, help="gpu or cpu")
     parser.add_argument('--tag', default='0000', type=str, help="identity for experiments")
 
+    #parser.add_argument('--mse_threshold', default=0.036, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
+    parser.add_argument('--mse_threshold', default=0.036, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
+    parser.add_argument('--loss_threshold', default=0.01, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
+    parser.add_argument('--count_thresh', default=5, type=int, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
+    parser.add_argument('--max_mse_thresh', default=0.2, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
     
     parser.add_argument('--version', default="1", type=str, help="either: [1,2,3]")
     
     #version 1 params:
     parser.add_argument('--gnn', default="gcn", type=str, help="either: [gcn,gat]")
-    parser.add_argument('--gnn_layers', default=6, type=int, help="num of gnn layers [2,3,4,5,6,7,8]")
+    parser.add_argument('--gnn_layers', default=2, type=int, help="num of gnn layers [2,3,4,5,6,7,8]")
     parser.add_argument('--sf', default=0.1, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
-    parser.add_argument('--gat_heads', default=8, type=int, help="num of gnn heads [8,16,32,64]")
+    parser.add_argument('--gat_heads', default=8, type=int, help="num of gnn heads [1 recommended]")
     
     #version 2 params, don't permute these for search in version 1 (wastes time, will be ignored in version 1):
     parser.add_argument('--use_layernorm', default='no', type=str, help="use layer norm:[yes,no]")
