@@ -11,11 +11,16 @@ from torch_geometric.nn import GATConv
 from util.mesh import compute_normal
 
 from model.deformationgnn import DeformationGNN
+from pytorch3d.structures import Meshes
+
+
+
 
 class NodeFeatureNet(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=1):
+    def __init__(self, C=128, K=5, n_scale=1,use_pytorch3d=True):
         super(NodeFeatureNet, self).__init__()
         # mlp layers
+        self.use_pytorch3d = use_pytorch3d
         self.fc1 = nn.Linear(6, C)
         self.fc2 = nn.Linear(C*2, C*4)
         self.fc3 = nn.Linear(C*4, C*2)
@@ -45,7 +50,12 @@ class NodeFeatureNet(nn.Module):
         z_local = self.localfc(z_local)
         
         # point feature
-        normal = compute_normal(v,self.f)
+        if not self.use_pytorch3d:
+            normal = compute_normal(v,self.f)#depricate this
+        else:
+            mesh = Meshes(verts=v, faces=self.f)
+            normal = mesh.verts_normals_packed()
+            normal = normal.unsqueeze(0)
         x = torch.cat([v, normal], 2)
         z_point = F.leaky_relu(self.fc1(x), 0.2)
         
@@ -100,19 +110,16 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
     
 class DeformBlockGNN(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True, use_layernorm=True, gat_heads=8):
+    def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True, gat_heads=8,use_pytorch3d=True):
         super(DeformBlockGNN, self).__init__()
         self.sf=sf
-        self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale)
+        self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale,use_pytorch3d=use_pytorch3d)
         # Initialize ResidualGNN with parameters adjusted for the task
         self.gnn = DeformationGNN(input_features=2*C,  # Adjust based on NodeFeatureNet output
                                    hidden_features=C,
                                    output_dim=3,  # Assuming 3D deformation vector
                                    num_layers=gnn_layers,
                                    gat_heads=gat_heads,  # Adjust as needed
-                                   pool_ratio=1.0,
-                                   use_pooling=False,  # Based on application need
-                                   use_layernorm=use_layernorm,
                                    use_gcn=use_gcn,  # Choose between GCN and GAT
                                    final_activation='None')  # Based on deformation requirements
     
@@ -145,9 +152,8 @@ class CSRFnetV2(nn.Module):
                        sf=.1,
                        gnn_layers=5,
                        use_gcn=True,
-                       use_residual=True,
-                       use_layernorm=True,
-                       gat_heads=8):
+                       gat_heads=8,
+                       use_pytorch3d=True):
         
         super(CSRFnetV2, self).__init__()
 
@@ -161,10 +167,10 @@ class CSRFnetV2(nn.Module):
                                      sf,
                                      gnn_layers=gnn_layers,
                                      use_gcn=use_gcn,
-                                     use_layernorm=use_layernorm,
-                                     gat_heads=gat_heads)
+                                     gat_heads=gat_heads,
+                                     use_pytorch3d=use_pytorch3d)
         
-    def set_data(self, x, V,f=None):
+    def set_data(self, x, V,f=None,reduced_DOF=False):
         # x: coordinats
         # V: input brain MRI volume
         assert x.shape[0] == 1
@@ -172,6 +178,7 @@ class CSRFnetV2(nn.Module):
         assert x.shape[1] != 1
         assert f.shape[1] != 1
         self.f = f
+        self.reduced_DOF=reduced_DOF
         edge_list = torch.cat([self.f[0,:,[0,1]],
                                self.f[0,:,[1,2]],
                                self.f[0,:,[2,0]]], dim=0).transpose(1,0)#moved from after x
@@ -184,7 +191,21 @@ class CSRFnetV2(nn.Module):
         
     #this method gets called by odeint, and thus the method signature has t in it even though the t is ignored
     def forward(self, t, x):
-        dx = self.block1(x)
+        dx = self.block1(x) # current
+        dx = dx.unsqueeze(0) # current
         
-        dx = dx.unsqueeze(0)
-        return dx
+        if self.reduced_DOF:#probably never use
+            assert False,'unsupported idea'
+            # Create a mesh from the current vertices 'x' and predefined faces 'self.f'
+            mesh = Meshes(verts=x, faces=self.f)
+            # Compute the normals for the vertices
+            normal = mesh.verts_normals_packed()
+
+            # Project 'dx' onto the normals
+            # Calculate dot product of 'dx' and 'normal', and reshape to match dimensions
+            dot_product = (dx * normal).sum(dim=1, keepdim=True)
+
+            # Project dx onto the normal direction
+            dx = dot_product * normal
+        
+        return dx #current

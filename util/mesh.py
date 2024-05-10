@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+from pytorch3d.structures import Meshes
+
 
 """
 Several functions in this code are based on PyTorch3D.
@@ -203,3 +205,29 @@ def compute_dice(x, y, dim='2d'):
         # input size (B, C, L, W, H)
         dice = (2*(x*y).sum([2,3,4]) / (x.sum([2,3,4]) + y.sum([2,3,4]))).mean(-1)
     return dice.item()
+
+
+def compute_normals_via_pytorch3d(vertices, faces):
+    """
+    Compute vertex normals using PyTorch3D for the given vertices and faces.
+    Assumes that vertices and faces are already on the correct device.
+
+    Parameters:
+    vertices (torch.Tensor): A tensor of shape (N, 3) containing N vertices.
+    faces (torch.Tensor): A tensor of shape (M, 3) containing M faces with indices referring to vertices.
+
+    Returns:
+    torch.Tensor: A tensor of shape (N, 3) containing the vertex normals.
+    """
+    # Ensure the vertices and faces are of correct type
+    vertices = vertices.float()  # Ensure floating point
+    faces = faces.long()         # Ensure integer indices
+
+    # Create a mesh object on the same device as vertices
+    mesh = Meshes(verts=[vertices], faces=[faces])
+
+    # Compute and retrieve the vertex normals
+    normals = mesh.verts_normals_packed()
+
+    return normals
+

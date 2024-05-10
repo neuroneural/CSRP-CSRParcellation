@@ -10,6 +10,7 @@ import trimesh
 from data.preprocess import process_volume, process_surface
 from util.mesh import laplacian_smooth, compute_normal
 
+from pytorch3d.structures import Meshes
 
 # ----------------------------
 #  for segmentation
@@ -140,18 +141,34 @@ class BrainDataset(Dataset):
     def _calculate_mse(self,original, noisy):
         return 1000.0*np.mean((original - noisy) ** 2)
 
-    # Binary search to find the standard deviation
-    def _binary_search_mse(self,original_vertices, low, high, mse_threshold, tolerance):
+    
+    def _binary_search_mse(self, original_vertices, faces, low, high, tolerance, device='cpu'):
+        """
+        Binary search to find the standard deviation of Gaussian noise projected onto vertex normals
+        that meets the MSE threshold with a specified tolerance.
+        """
+        # Convert numpy arrays to torch tensors for normal computation
+        vertices_tensor = torch.from_numpy(original_vertices).float().to(device)  # Ensure operation on specified device
+        faces_tensor = torch.from_numpy(faces).long().to(device)
+
+        # Compute vertex normals using PyTorch3D
+        mesh = Meshes(verts=[vertices_tensor], faces=[faces_tensor])
+        normals = mesh.verts_normals_packed().cpu().numpy()  # Get normals as numpy array
+
         while high - low > tolerance:
             mid = (high + low) / 2
             noise = np.random.randn(*original_vertices.shape) * mid
-            noisy_vertices = original_vertices + noise
+            # Project noise onto the normals
+            noise_projection = np.sum(noise * normals, axis=1, keepdims=True) * normals
+            noisy_vertices = original_vertices + noise_projection
             mse = self._calculate_mse(original_vertices, noisy_vertices)
-            if mse < mse_threshold:
+            if mse < self.mse_threshold:
                 low = mid
             else:
                 high = mid
-        return (high + low) / 2
+
+        return noisy_vertices
+
 
     def _load_surf_data_for_subject_self_supervised_gaussian(self, subid,config,data_usage):
         """
@@ -237,12 +254,8 @@ class BrainDataset(Dataset):
         low, high = 0.01, 1.0  # Define the range for the standard deviation
         
         # Perform binary search
-        optimal_std_dev = self._binary_search_mse(v_in, low, high, self.mse_threshold, tolerance)
+        v_in = self._binary_search_mse(v_gt, f_gt, low, high, tolerance)
 
-        # Generate noise using the found standard deviation and create the final noisy mesh
-        optimal_noise = np.random.randn(*v_in.shape) * optimal_std_dev
-        v_in = v_in + optimal_noise
-        
         return BrainData(volume=brain_arr, v_in=v_in, v_gt=v_gt,
                               f_in=f_in, f_gt=f_gt).getBrain()
         

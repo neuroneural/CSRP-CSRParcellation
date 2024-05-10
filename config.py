@@ -21,10 +21,13 @@ def load_config():
     parser.add_argument('--tag', default='0000', type=str, help="identity for experiments")
 
     #parser.add_argument('--mse_threshold', default=0.036, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
-    parser.add_argument('--mse_threshold', default=0.01, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
-    parser.add_argument('--loss_threshold', default=0.01, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
-    parser.add_argument('--count_thresh', default=5, type=int, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
-    parser.add_argument('--max_mse_thresh', default=0.05, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
+    parser.add_argument('--mse_threshold', default=0.01, type=float, help="target amount of error to start from")
+    parser.add_argument('--loss_threshold', default=0.01, type=float, help="good enough to double target")
+    parser.add_argument('--count_thresh', default=5, type=int, help="number of validations to fail before quit")
+    parser.add_argument('--max_mse_thresh', default=0.06, type=float, help="quit when error is this big")
+    
+    parser.add_argument('--use_pytorch3d_normal', default='yes', type=str, help="[yes,no] normal computation flag")
+    
     
     parser.add_argument('--version', default="1", type=str, help="either: [1,2,3]")
     

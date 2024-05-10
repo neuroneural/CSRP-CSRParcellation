@@ -275,13 +275,6 @@ def train_surf(config):
     else:
         assert False, f"unsupported gnn configuration {config.gnn}"    
     
-        
-    if config.use_layernorm=='yes':
-        use_layernorm=True
-    elif config.use_layernorm=='no':
-        use_layernorm=False
-    else:
-        assert False, f"unsupported residual parameter {config.use_layernorm}"
     
     # --------------------------
     # initialize models
@@ -301,14 +294,12 @@ def train_surf(config):
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
     elif config.model_type == 'csrf' and config.version=='2L':
         cortexode = CSRFnetV2(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
     elif config.model_type == 'csrf' and config.version=='3':
         assert False, 'currently unsupported'

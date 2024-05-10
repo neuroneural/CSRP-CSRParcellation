@@ -102,12 +102,6 @@ def train_surf(config):
         assert False, f"unsupported gnn configuration {config.gnn}"
     
 
-    if config.use_layernorm=='yes':
-        use_layernorm=True
-    elif config.use_layernorm=='no':
-        use_layernorm=False
-    else:
-        assert False, f"unsupported residual parameter {config.use_layernorm}"
     
     # --------------------------
     # initialize models
@@ -127,14 +121,12 @@ def train_surf(config):
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
     elif config.model_type == 'csrf' and config.version=='2L':
         cortexode = CSRFnetV2(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
     elif config.model_type == 'csrf' and config.version=='3':
         assert False, 'currently unsupported'
@@ -142,7 +134,6 @@ def train_surf(config):
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_layernorm = use_layernorm,
                        gat_heads=config.gat_heads).to(device)
     else:
         cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
@@ -242,12 +233,12 @@ def train_surf(config):
                 logging.info('-------------------------------------')
                 if np.mean(valid_error) < config.loss_threshold and trainset.mse_threshold<config.max_mse_thresh:
                     print(f'doubling mse threshold from: {trainset.mse_threshold}')
+                    print('valid error', np.mean(valid_error))
                     trainset.mse_threshold = trainset.mse_threshold * 2.0
                     validset.mse_threshold = validset.mse_threshold * 2.0
-                    
                 else:
                     count_thresh += 1
-                if count_thresh > 5:
+                if count_thresh > config.count_thresh:
                     print(f"Last Stable scaled mse Limit was: {trainset.mse_threshold/2.0}")
                     exit()
                 # Log to CSV
