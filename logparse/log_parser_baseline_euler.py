@@ -34,19 +34,19 @@ def write_to_csv(filepath, hemisphere, surf_type, model_type, solver, gnn_layers
 
 def main():
     # Expecting filename, model_type, solver, and optionally gnn_layers
-    if len(sys.argv) < 4:
-        print("Usage: python script.py <filename> <model_type> <solver> [<gnn_layers>]")
-        sys.exit(1)
-
-    filename = sys.argv[1]
-    model_type = sys.argv[2]
-    solver = sys.argv[3]
-    gnn_layers = sys.argv[4] if len(sys.argv) > 4 and model_type == 'v2' else 'NA'
     
-    surf_type, hemisphere = parse_filename(filename)
-    data = extract_data_from_log(filename)
-    output_csv_path = 'results_exp_csrf_gnn_2.csv'
-    write_to_csv(output_csv_path, hemisphere, surf_type, model_type, solver, gnn_layers, data)
+    basedir='/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/experiment_5/model/'
+    filenames = ['model_gm_adni_lh_exp5.log', 'model_gm_adni_rh_exp5.log',  'model_wm_adni_lh_exp5.log' , 'model_wm_adni_rh_exp5.log']
+    model_type = 'baseline'
+    solver = 'euler'
+    gnn_layers = 'NA'
+    output_csv_path = 'results_experiment5_baseline_euler_NA.csv'
+        
+    for filename in filenames:
+        filename = os.path.join(basedir, filename)
+        surf_type, hemisphere = parse_filename(filename)
+        data = extract_data_from_log(filename)
+        write_to_csv(output_csv_path, hemisphere, surf_type, model_type, solver, gnn_layers, data)
 
 if __name__ == '__main__':
     main()

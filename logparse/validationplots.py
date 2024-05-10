@@ -2,9 +2,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def plot_epochs_validation(input_csv):
-    # Load the data
-    df = pd.read_csv(input_csv)
+def plot_epochs_validation(input_csvs, max_epoch=None):
+    # Load data from multiple CSVs into a single DataFrame
+    df_list = [pd.read_csv(csv) for csv in input_csvs]
+    df = pd.concat(df_list, ignore_index=True)
+
+    # If a max_epoch is specified, filter the DataFrame to include only data up to that epoch
+    if max_epoch is not None:
+        df = df[df['epochs'] <= max_epoch]
 
     # Prepare a column that combines model_type, solver, and gnn_layers for detailed legend information
     df['model_solver_layers'] = df.apply(lambda row: f"{row['model_type']}_{row['solver']}_{row['gnn_layers']}", axis=1)
@@ -47,5 +52,9 @@ def plot_epochs_validation(input_csv):
     plt.show()
 
 # Usage
-input_csv_path = 'results.csv'
-plot_epochs_validation(input_csv_path)
+input_csv_paths = [
+    'results_exp_csrf_gnn_3.csv',
+    'results_experiment5_baseline_euler_NA.csv'
+]
+max_epoch_cutoff = 200  # Specify the maximum epoch cutoff
+plot_epochs_validation(input_csv_paths, max_epoch_cutoff)
