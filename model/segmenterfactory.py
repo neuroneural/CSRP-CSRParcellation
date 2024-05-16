@@ -21,7 +21,8 @@ class SegmenterFactory:
         Returns:
         - An instance of the requested segmentation model.
         """
-        if model_name=="SegUnet":
+        if model_name=="SegUnet" or model_name=="Unet":
+            print('segmenting with original unet')
             return SegUnet(
                 c_in=1,
                 c_out=3

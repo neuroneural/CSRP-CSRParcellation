@@ -34,7 +34,7 @@ def load_config():
     #version 1 params:
     parser.add_argument('--gnn', default="gcn", type=str, help="either: [gcn,gat]")
     parser.add_argument('--gnn_layers', default=2, type=int, help="num of gnn layers [2,3,4,5,6,7,8]")
-    parser.add_argument('--sf', default=0.1, type=float, help="scaling factor for tanh nonlinearity [.1,.2,.3,.4,.5,.6,.7,.8,.9,1.0] ")
+    parser.add_argument('--sf', default=.1, type=float, help="scaling factor for final layer output  ")#pairs with nonlinearity
     parser.add_argument('--gat_heads', default=8, type=int, help="num of gnn heads [1 recommended]")
     
     #version 2 params, don't permute these for search in version 1 (wastes time, will be ignored in version 1):

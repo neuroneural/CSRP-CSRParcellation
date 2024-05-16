@@ -20,7 +20,7 @@ class SegData():
     def __init__(self, vol, seg, subj_id):
         self.vol = torch.Tensor(vol)
         self.seg = torch.Tensor(seg)
-        self.subj_id = subj_id[0]
+        self.subj_id = subj_id
     
     def getSeg(self):
         return self.vol, self.seg, self.subj_id
@@ -44,7 +44,8 @@ class SegDataset(Dataset):
     
     def __getitem__(self, idx):
         subid = self.subject_list[idx]
-        vol, seg = self._load_seg_data_for_subject(subid,self.config,self.data_usage)
+        vol, seg,_ = self._load_seg_data_for_subject(subid,self.config,self.data_usage)
+        assert subid == _
         return vol, seg, subid
     
     def _load_seg_data_for_subject(self, subid,config,data_usage):

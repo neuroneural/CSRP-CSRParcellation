@@ -20,10 +20,10 @@ class NodeFeatureNet(nn.Module):
     def __init__(self, C=128, K=5, n_scale=1,use_pytorch3d=True):
         super(NodeFeatureNet, self).__init__()
         # mlp layers
-        self.use_pytorch3d = use_pytorch3d
-        self.fc1 = nn.Linear(6, C)
-        self.fc2 = nn.Linear(C*2, C*4)
-        self.fc3 = nn.Linear(C*4, C*2)
+        # self.use_pytorch3d = use_pytorch3d
+        # self.fc1 = nn.Linear(6, C)
+        # self.fc2 = nn.Linear(2*C, C*4)
+        # self.fc3 = nn.Linear(C*4, C*2)
         
         # for local convolution operation
         self.localconv = nn.Conv3d(n_scale, C, (K, K, K))
@@ -46,26 +46,28 @@ class NodeFeatureNet(nn.Module):
         
         z_local = self.cube_sampling(v)
         z_local = self.localconv(z_local)
+        z_local = F.leaky_relu(z_local,0.2)#New relu
         z_local = z_local.view(-1, self.m, self.C)
         z_local = self.localfc(z_local)
-        
+        z_local = F.leaky_relu(z_local,0.2)#New relu
         # point feature
-        if not self.use_pytorch3d:
-            normal = compute_normal(v,self.f)#depricate this
-        else:
-            mesh = Meshes(verts=v, faces=self.f)
-            normal = mesh.verts_normals_packed()
-            normal = normal.unsqueeze(0)
-        x = torch.cat([v, normal], 2)
-        z_point = F.leaky_relu(self.fc1(x), 0.2)
+        # if not self.use_pytorch3d:
+        #     normal = compute_normal(v,self.f)#depricate this
+        # else:
+        #     mesh = Meshes(verts=v, faces=self.f)
+        #     normal = mesh.verts_normals_packed()
+        #     normal = normal.unsqueeze(0)
+        # x = torch.cat([v, normal], 2)
+        # z_point = F.leaky_relu(self.fc1(x), 0.2)
         
         # feature fusion
-        z = torch.cat([z_point, z_local], 2)
-        z = F.leaky_relu(self.fc2(z), 0.2)
-        z = F.leaky_relu(self.fc3(z), 0.2)
+        # z = torch.cat([z_point, z_local], 2)
+        # z = F.leaky_relu(self.fc2(z), 0.2)
+        # z = F.leaky_relu(self.fc3(z), 0.2)
         
-        return z    # node features
-    
+        # return z    # node features
+        # print('z_local shape', z_local.shape)
+        return z_local
     def _initialize(self, V):
         # initialize coordinates shift and cubes
         self.x_shift = self.x_shift.to(V.device)
@@ -115,13 +117,13 @@ class DeformBlockGNN(nn.Module):
         self.sf=sf
         self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale,use_pytorch3d=use_pytorch3d)
         # Initialize ResidualGNN with parameters adjusted for the task
-        self.gnn = DeformationGNN(input_features=2*C,  # Adjust based on NodeFeatureNet output
+        self.gnn = DeformationGNN(input_features=C,  # Adjust based on NodeFeatureNet output
                                    hidden_features=C,
                                    output_dim=3,  # Assuming 3D deformation vector
                                    num_layers=gnn_layers,
                                    gat_heads=gat_heads,  # Adjust as needed
-                                   use_gcn=use_gcn,  # Choose between GCN and GAT
-                                   final_activation='None')  # Based on deformation requirements
+                                   use_gcn=use_gcn  # Choose between GCN and GAT
+                                   )  # Based on deformation requirements
     
     def set_data(self, x, V,f=None,edge_list=None):
         # x: coordinats
@@ -153,7 +155,8 @@ class CSRFnetV2(nn.Module):
                        gnn_layers=5,
                        use_gcn=True,
                        gat_heads=8,
-                       use_pytorch3d=True):
+                       use_pytorch3d=True
+                       ):
         
         super(CSRFnetV2, self).__init__()
 
@@ -168,7 +171,8 @@ class CSRFnetV2(nn.Module):
                                      gnn_layers=gnn_layers,
                                      use_gcn=use_gcn,
                                      gat_heads=gat_heads,
-                                     use_pytorch3d=use_pytorch3d)
+                                     use_pytorch3d=use_pytorch3d
+                                     )
         
     def set_data(self, x, V,f=None,reduced_DOF=False):
         # x: coordinats

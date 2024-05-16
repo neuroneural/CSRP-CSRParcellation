@@ -1,10 +1,11 @@
 #!/bin/bash
 #. /opt/miniconda3/bin/activate cortexode
 . /opt/miniconda3/bin/activate csrf
+
 cd /cortexode
 
 # Parameters setup
-declare -a versions=("2")
+declare -a versions=("3")
 declare -a gnns=("gat")  # Assuming "gcn" might not be included
 declare -a gnn_layers=(2 3 4)
 declare -a gat_heads=(1)
@@ -63,7 +64,6 @@ fi
 
 # Execute Python script with parameters set above
 echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, GAT Heads $gat_head"
-
-#python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='gm' --n_epochs=100 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
-#python train.py --model_file 'model_gm_adni_rh_csrf_v1_gnngat_layers5_sf0.1_heads1_29epochs.pt' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_3/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_3/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='gm' --n_epochs=60 --start_epoch=31 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
-python train.py --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_3/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_3/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='gm' --n_epochs=401 --start_epoch=1 --n_samples=150000 --tag='csrf' --solver='euler' --step_size=0.1 --device='gpu' 
+#python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=100 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
+#python train.py --model_file 'model_wm_adni_lh_csrf_v1_gnngat_layers5_sf0.1_heads1_29epochs.pt' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_7/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_7/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=60 --start_epoch=31 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
+python train.py --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_7/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_7/init/' --data_name='adni'  --surf_hemi='lh' --surf_type='wm' --n_epochs=401 --start_epoch=1 --n_samples=150000 --tag='csrf' --solver='euler' --step_size=0.1 --device='gpu' 

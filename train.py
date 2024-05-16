@@ -26,6 +26,8 @@ import re
 import os
 import csv
 import torch.multiprocessing as mp
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
 
 def train_seg(config):
     """training WM segmentation"""
@@ -38,20 +40,16 @@ def train_seg(config):
     device = config.device
     tag = config.tag
     n_epochs = config.n_epochs
-    start_epoch = config.start_epoch
     lr = config.lr
-    
+
     # start training logging
     logging.basicConfig(filename=model_dir+'model_seg_'+data_name+'_'+tag+'.log',
-                        filemode='a',
                         level=logging.INFO, format='%(asctime)s %(message)s')
     
     # --------------------------
     # load dataset
     # --------------------------
     logging.info("load dataset ...")
-    
-    #Updated
     trainset = SegDataset(config=config, data_usage='train')
     validset = SegDataset(config=config, data_usage='valid')
 
@@ -63,39 +61,7 @@ def train_seg(config):
     # initialize model
     # --------------------------
     logging.info("initalize model ...")
-    #segnet = Unet(c_in=1, c_out=3).to(device)#renamed SegUnet
-    print('config.seg_model_type',config.seg_model_type)
-
-    if config.seg_model_type == "SwinUNETR":
-        segnet = SegmenterFactory.get_segmenter("SwinUNETR",device)
-    elif config.seg_model_type == "MonaiUnet":
-        segnet = SegmenterFactory.get_segmenter("MonaiUnet",device)    
-    elif config.seg_model_type == "SegUnet":
-        segnet = SegmenterFactory.get_segmenter("SegUnet",device)
-    else:
-        assert False, "Config model name is incorrect"
-    
-    model_path = None
-    
-    if config.model_file:
-        print('loading model',config.model_file)
-        print('hemi', config.surf_hemi)
-        print('surftype', config.surf_type)
-        
-        start_epoch = int(config.start_epoch)
-        model_path = os.path.join(config.model_dir, config.model_file)
-    
-    # Load model state if a model path is provided
-    if model_path and os.path.isfile(model_path):
-        print('device', config.device)
-        segnet.load_state_dict(torch.load(model_path, map_location=torch.device(config.device)))
-        print(f"Model loaded from {model_path}")
-    else:
-        print("No model file provided or file does not exist. Starting from scratch.")
-    
-    print('start epoch',start_epoch)
-    
-    
+    segnet = Unet(c_in=1, c_out=3).to(device)
     optimizer = optim.Adam(segnet.parameters(), lr=lr)
     # in case you need to load a checkpoint
     # segnet.load_state_dict(torch.load(model_dir+'model_seg_'+data_name+'_'+tag+'_XXepochs.pt'))
@@ -106,104 +72,52 @@ def train_seg(config):
     # --------------------------
     logging.info("start training ...")
         
-    for epoch in tqdm(range(start_epoch, n_epochs + 1)):
+    for epoch in tqdm(range(n_epochs+1)):
         avg_loss = []
         for idx, data in enumerate(trainloader):
-            volume_in, seg_gt = data
+            volume_in, seg_gt, _sub_id = data
 
             optimizer.zero_grad()
             volume_in = volume_in.to(device)
             seg_gt = seg_gt.long().to(device)
 
-            # Check if the model requires padding and cropping
-            if config.seg_model_type == "SwinUNETR":
-                original_size = [1, 1, 176, 208, 176]  # Original input size
-                target_size = [1, 1, 192, 224, 192]  # Target size after padding
-
-                # Step 1: Pad the volume to the target size
-                padded_volume = SegmenterFactory.pad_to_size(volume_in, target_size)
-                
-                # Process padded volume through the network
-                seg_out = segnet(padded_volume)
-
-                # Ensure the output size matches the padded input, with the channel size adjusted for segmentation
-                pvshapemod = list(padded_volume.size())
-                pvshapemod[2:] = target_size[2:]  # Only spatial dimensions are padded, channel dimension stays
-                assert list(seg_out.size())[2:] == pvshapemod[2:], "Segmentation output size mismatch after padding"
-
-                # Step 2: Crop the output back to the original input size
-                original_size_seg = [1, 3, 176, 208, 176]  # Adjust for the number of segmentation classes
-                cropped_volume = SegmenterFactory.crop_to_original_size(seg_out, original_size_seg)
-                seg_out = cropped_volume
-            else:
-                # For models that don't require padding/cropping, process directly
-                seg_out = segnet(volume_in)
-
-            # Assertions for sanity checks
-            if config.seg_model_type == "SwinUNETR":
-                assert list(seg_out.size()) == original_size_seg, "Segmentation output size mismatch after cropping"
-            else:
-                original_size_no_padding = [1, 3, 176, 208, 176]  # Adjust for segmentation classes without padding
-                assert list(seg_out.size()) == original_size_no_padding, "Segmentation output size mismatch without padding/cropping"
-
-            # Compute the loss
+            seg_out = segnet(volume_in)
             loss = nn.CrossEntropyLoss()(seg_out, seg_gt)
-            
             avg_loss.append(loss.item())
             loss.backward()
             optimizer.step()
 
-
         logging.info("epoch:{}, loss:{}".format(epoch,np.mean(avg_loss)))
-        
-        if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
+
+        if epoch % 10 == 0:
             logging.info('-------------validation--------------')
             with torch.no_grad():
                 avg_error = []
                 avg_dice = []
                 for idx, data in enumerate(validloader):
-                    volume_in, seg_gt = data
+                    volume_in, seg_gt, _ = data
                     volume_in = volume_in.to(device)
                     seg_gt = seg_gt.long().to(device)
-
-                    # Check if the model requires padding and cropping
-                    if config.seg_model_type == "SwinUNETR":
-                        # Same as the updated training loop
-                        original_size = [1, 1, 176, 208, 176]
-                        target_size = [1, 1, 192, 224, 192]
-
-                        padded_volume = SegmenterFactory.pad_to_size(volume_in, target_size)
-                        seg_out = segnet(padded_volume)
-
-                        # Ensure the output size matches the padded input
-                        assert list(seg_out.size())[2:] == target_size[2:]
-
-                        original_size = [1, 3, 176, 208, 176]
-                        cropped_volume = SegmenterFactory.crop_to_original_size(seg_out, original_size)
-                        seg_out = cropped_volume
-                    else:
-                        # Original validation code for models that do not require padding
-                        seg_out = segnet(volume_in)
-
+                    seg_out = segnet(volume_in)
                     avg_error.append(nn.CrossEntropyLoss()(seg_out, seg_gt).item())
-
-                    # Adjust the following lines to work with or without padding/cropping as needed
+                    
+                    # compute dice score
                     seg_out = torch.argmax(seg_out, dim=1)
                     seg_out = F.one_hot(seg_out, num_classes=3).permute(0,4,1,2,3)[:,1:]
                     seg_gt = F.one_hot(seg_gt, num_classes=3).permute(0,4,1,2,3)[:,1:]
                     dice = compute_dice(seg_out, seg_gt, '3d')
                     avg_dice.append(dice)
-
                 logging.info("epoch:{}, validation error:{}".format(epoch, np.mean(avg_error)))
                 logging.info("Dice score:{}".format(np.mean(avg_dice)))
                 logging.info('-------------------------------------')
         # save model checkpoints
-        if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
+        if epoch % 10 == 0:
             torch.save(segnet.state_dict(),
                        model_dir+'model_seg_'+data_name+'_'+tag+'_'+str(epoch)+'epochs.pt')
     # save final model
     torch.save(segnet.state_dict(),
                model_dir+'model_seg_'+data_name+'_'+tag+'.pt')
+
 
 
 def train_surf(config):
@@ -254,28 +168,24 @@ def train_surf(config):
     solver = config.solver    # ODE solver
     
     # create log file
-    log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}"
+    if config.version=="0":
+        log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{solver}"
+    else:
+        log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}"
 
     # If the GNN type is 'gat', include `gat_heads` in the filename
     if config.gnn == 'gat':
+        use_gcn = False
         log_filename += f"_heads{config.gat_heads}"
-
+    elif config.gnn == 'gcn':
+        use_gcn = True
     # Complete the filename by appending '.log'
     log_filename += ".log"
 
     # Configure logging to append to the specified log file, with the desired format and level
     logging.basicConfig(filename=log_filename, filemode='a', level=logging.INFO, format='%(asctime)s %(message)s')
 
-    if config.gnn=='gcn':
-        use_gcn=True
-        gnnVersion=2
-    elif config.gnn == 'gat':
-        use_gcn=False
-        gnnVersion=1
-    else:
-        assert False, f"unsupported gnn configuration {config.gnn}"    
-    
-    
+        
     # --------------------------
     # initialize models
     # --------------------------
@@ -284,32 +194,30 @@ def train_surf(config):
     print('csrf version ', config.version)
         
     if config.model_type == 'csrf' and config.version=='1':
+        print('version 1 is loading')
         cortexode = CSRFnet(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        gnnVersion=gnnVersion,
                        gat_heads=config.gat_heads).to(device)
     elif config.model_type == 'csrf' and config.version=='2':
+        print('version 2 is loading')
         cortexode = CSRFnetV2(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       gat_heads=config.gat_heads).to(device)
-    elif config.model_type == 'csrf' and config.version=='2L':
-        cortexode = CSRFnetV2(dim_h=C, kernel_size=K, n_scale=Q,
-                       sf=config.sf,
-                       gnn_layers=config.gnn_layers,
-                       use_gcn=use_gcn,
-                       gat_heads=config.gat_heads).to(device)
+                       gat_heads=config.gat_heads
+                       ).to(device)
     elif config.model_type == 'csrf' and config.version=='3':
-        assert False, 'currently unsupported'
+        print('version 3 is loading')
         cortexode = CSRFnetV3(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=use_gcn,
-                       use_layernorm = use_layernorm,
-                       gat_heads=config.gat_heads).to(device)
+                       gat_heads=config.gat_heads
+                       ).to(device)
     else:
+        print('baseline model is loading, cortexode')
         cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
     
     model_path = None
@@ -332,6 +240,8 @@ def train_surf(config):
     
     print('start epoch',start_epoch)
     optimizer = optim.Adam(cortexode.parameters(), lr=lr)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=0, verbose=True)
+
     T = torch.Tensor([0,1]).to(device)    # integration time interval for ODE
 
     # --------------------------
@@ -420,7 +330,18 @@ def train_surf(config):
                     v_out = odeint(cortexode, v_in, t=T, method=solver,
                                    options=dict(step_size=step_size))[-1]
                     valid_error.append(1e3 * chamfer_distance(v_out, v_gt)[0].item())
-                        
+
+                if epoch > 1 and epoch %10 ==0:
+                    old_lr = optimizer.param_groups[0]['lr']
+                    scheduler.step(np.mean(valid_error).item())
+                    new_lr = optimizer.param_groups[0]['lr']
+                    if old_lr != new_lr:
+                        print("Learning rate was adjusted from {} to {}".format(old_lr, new_lr))
+                    else:
+                        print("Learning rate was not adjusted.")
+
+                                         
+
                 logging.info('epoch:{}, validation error:{}'.format(epoch, np.mean(valid_error)))
                 logging.info('-------------------------------------')
                 # Log to CSV
@@ -471,6 +392,8 @@ def train_surf(config):
                 model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{epoch}epochs_{solver}.pt"
             elif config.gnn =='gcn':
                 model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}.pt"
+            elif config.gnn =='baseline':
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{epoch}epochs_{solver}.pt"
             else:
                 assert False,'update naming conventions for model file name'
             
@@ -480,6 +403,8 @@ def train_surf(config):
         final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{solver}.pt"
     elif config.gnn =='gcn':
         final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}.pt"
+    elif config.gnn =='baseline':
+        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{solver}.pt"
     else:
         assert False,'update naming conventions for model file name'
     
