@@ -18,58 +18,57 @@ from util.mesh import laplacian_smooth, compute_normal, compute_mesh_distance, c
 from util.tca import topology
 from model.net import CortexODE, Unet
 from config import load_config
-from model.segmenterfactory import SegmenterFactory
-from data.dataloader import load_seg_data
+from data.dataloader import SegDataset
 from torch.utils.data import DataLoader
 # initialize topology correction
 topo_correct = topology()
 
 import matplotlib.pyplot as plt
 
-def save_segmentation_comparison(seg_pred, seg_gt, file_path='/mnt/data/segmentation_comparison.png'):
-    """
-    Save a comparison of predicted and ground truth segmentations as a PNG file.
+# def save_segmentation_comparison(seg_pred, seg_gt, file_path='/mnt/data/segmentation_comparison.png'):
+#     """
+#     Save a comparison of predicted and ground truth segmentations as a PNG file.
     
-    Parameters:
-    - seg_pred: Tensor, predicted segmentation with shape [D, H, W] or [1, D, H, W].
-    - seg_gt: Tensor, ground truth segmentation with shape [1, D, H, W].
-    - file_path: String, path to save the PNG file.
-    """
-    # Adjusting the logic to handle both cases: seg_pred with or without an extra leading dimension
-    # Calculating the 1st quartile slice index (25% position)
-    size = list(seg_pred.size())
-    D = size[0]
-    H = size[1]
-    W = size[2]
-    if len(seg_pred.shape) == 4:  # If seg_pred includes an extra leading dimension
-        slice_pred = seg_pred[0, :, H//4, :].cpu().numpy()
-    elif len(seg_pred.shape) == 3:  # If seg_pred is [D, H, W]
-        first_quartile_slice_idx = seg_pred.shape[2] // 4
-        slice_pred = seg_pred[:, H//4, :].cpu().numpy()
-    else:
-        raise ValueError("Unexpected seg_pred shape.")
+#     Parameters:
+#     - seg_pred: Tensor, predicted segmentation with shape [D, H, W] or [1, D, H, W].
+#     - seg_gt: Tensor, ground truth segmentation with shape [1, D, H, W].
+#     - file_path: String, path to save the PNG file.
+#     """
+#     # Adjusting the logic to handle both cases: seg_pred with or without an extra leading dimension
+#     # Calculating the 1st quartile slice index (25% position)
+#     size = list(seg_pred.size())
+#     D = size[0]
+#     H = size[1]
+#     W = size[2]
+#     if len(seg_pred.shape) == 4:  # If seg_pred includes an extra leading dimension
+#         slice_pred = seg_pred[0, :, H//4, :].cpu().numpy()
+#     elif len(seg_pred.shape) == 3:  # If seg_pred is [D, H, W]
+#         first_quartile_slice_idx = seg_pred.shape[2] // 4
+#         slice_pred = seg_pred[:, H//4, :].cpu().numpy()
+#     else:
+#         raise ValueError("Unexpected seg_pred shape.")
 
-    # Assuming seg_gt always has an extra leading dimension [1, D, H, W]
-    slice_gt = seg_gt[0, :, H//4, :].cpu().numpy()
+#     # Assuming seg_gt always has an extra leading dimension [1, D, H, W]
+#     slice_gt = seg_gt[0, :, H//4, :].cpu().numpy()
 
-    # Plotting the first quartile slices side by side
-    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+#     # Plotting the first quartile slices side by side
+#     fig, axs = plt.subplots(1, 2, figsize=(20, 10))
 
-    # Plot predicted segmentation
-    axs[0].imshow(slice_pred, cmap='gray')
-    axs[0].set_title("Predicted Segmentation (1st Quartile Slice)")
-    axs[0].axis('off')
+#     # Plot predicted segmentation
+#     axs[0].imshow(slice_pred, cmap='gray')
+#     axs[0].set_title("Predicted Segmentation (1st Quartile Slice)")
+#     axs[0].axis('off')
 
-    # Plot ground truth segmentation
-    axs[1].imshow(slice_gt, cmap='gray')
-    axs[1].set_title("Ground Truth Segmentation (1st Quartile Slice)")
-    axs[1].axis('off')
+#     # Plot ground truth segmentation
+#     axs[1].imshow(slice_gt, cmap='gray')
+#     axs[1].set_title("Ground Truth Segmentation (1st Quartile Slice)")
+#     axs[1].axis('off')
 
-    # Save the figure
-    plt.savefig(file_path, bbox_inches='tight', pad_inches=0.1)
-    plt.close(fig)  # Free up memory by closing the figure
+#     # Save the figure
+#     plt.savefig(file_path, bbox_inches='tight', pad_inches=0.1)
+#     plt.close(fig)  # Free up memory by closing the figure
 
-    print(f"Segmentation comparison saved to: {file_path}")
+#     print(f"Segmentation comparison saved to: {file_path}")
 
 
 
@@ -158,15 +157,7 @@ if __name__ == '__main__':
     rho = config.rho # inflation scale
     print('loading model ', config.seg_model_type)
     # ------ load models ------
-    if config.seg_model_type == "SwinUNETR":
-        segnet = SegmenterFactory.get_segmenter("SwinUNETR",device)
-    elif config.seg_model_type == "MonaiUnet":
-        segnet = SegmenterFactory.get_segmenter("MonaiUnet",device)    
-    elif config.seg_model_type == "SegUnet":
-        segnet = SegmenterFactory.get_segmenter("SegUnet",device)
-    else:
-        assert False, "Config model name is incorrect"
-    
+    segnet = Unet(c_in=1, c_out=3).to(device)
     segnet.load_state_dict(torch.load(model_dir+'model_seg_'+data_name+'_'+tag+'.pt'))
 
     if test_type == 'pred' or test_type == 'eval':
@@ -186,8 +177,11 @@ if __name__ == '__main__':
 
     
     if test_type == 'eval':
-        testset = load_seg_data(config, data_usage='test')
-        testloader = DataLoader(testset, batch_size=1, shuffle=False)
+        testset = SegDataset(config=config, data_usage='test')
+        
+        #Updated
+        testloader = DataLoader(testset, batch_size=1, shuffle=True, num_workers=4)
+            
         assd_wm_all = []
         assd_gm_all = []
         hd_wm_all = []
@@ -195,6 +189,12 @@ if __name__ == '__main__':
         sif_wm_all = []
         sif_gm_all = []
 
+    if test_type == 'init':
+        testset = SegDataset(config=config, data_usage='')
+        
+        #Updated
+        testloader = DataLoader(testset, batch_size=1, shuffle=True, num_workers=4)
+    
     for idx, data in enumerate(testloader):
         volume_in, seg_gt, subid = data
         subid = str(subid[0])
@@ -204,28 +204,9 @@ if __name__ == '__main__':
         
         # ------- predict segmentation -------
         with torch.no_grad():
-            # Check if using SwinUNETR and process accordingly
-            if config.seg_model_type == "SwinUNETR":
-                # Define original and target sizes
-                original_size = [1, 1, 176, 208, 176]  # Original input size
-                target_size = [1, 1, 192, 224, 192]  # Target size after padding
-
-                # Step 1: Pad the volume to the target size
-                padded_volume = SegmenterFactory.pad_to_size(volume_in, target_size)
-                
-                # Process padded volume through SwinUNETR
-                seg_out = segnet(padded_volume)
-
-                # Ensure output size matches the padded input, adjusting channel size for segmentation classes
-                assert list(seg_out.size())[2:] == target_size[2:], "Segmentation output size mismatch after padding"
-
-                # Step 2: Crop the output back to the original input size, adjusted for segmentation classes
-                original_size_seg = [1, 3, 176, 208, 176]  # Adjust for the number of segmentation classes
-                cropped_volume = SegmenterFactory.crop_to_original_size(seg_out, original_size_seg)
-                seg_out = cropped_volume
-            else:
-                # Process for other segmentation models (e.g., your previous model)
-                seg_out = segnet(volume_in)
+            #TODO: verify
+            # Process for other segmentation models (e.g., your previous model)
+            seg_out = segnet(volume_in)
 
             
             # Perform segmentation prediction
@@ -233,7 +214,7 @@ if __name__ == '__main__':
 
             # Assuming seg_pred and seg_gt are your predicted and ground truth segmentation tensors, respectively
             print(result_dir,data_name,subid,type(result_dir),type(data_name),type(subid))
-            save_segmentation_comparison(seg_pred, seg_gt, result_dir+'result_'+data_name+'_'+'segmentation'+'_'+subid+'.png')
+            # save_segmentation_comparison(seg_pred, seg_gt, result_dir+'result_'+data_name+'_'+'segmentation'+'_'+subid+'.png')
             
             # Handle hemisphere segmentation
             if surf_hemi == 'lh':

@@ -39,6 +39,10 @@ def load_config():
     
     #version 2 params, don't permute these for search in version 1 (wastes time, will be ignored in version 1):
     parser.add_argument('--use_layernorm', default='no', type=str, help="use layer norm:[yes,no]")
+    parser.add_argument('--patience', default='0', type=str, help="scheduler patience standard or [0,1,2,..]")
+    
+    parser.add_argument('--atlas', default="aparc", type=str, help="choose an atlas for parcellation")
+    parser.add_argument('--visualize', default="no", type=str, help="[yes,no]")
     
     parser.add_argument('--solver', default='euler', type=str, help="ODE solver: [euler, midpoint, rk4]")
     parser.add_argument('--step_size', default=0.1, type=float, help="step size of the ODE solver")

@@ -240,7 +240,15 @@ def train_surf(config):
     
     print('start epoch',start_epoch)
     optimizer = optim.Adam(cortexode.parameters(), lr=lr)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=0, verbose=True)
+    patience=0
+    if config.patience != "standard":
+        try:
+            patience= int(config.patience)
+        except:
+            print("patience should either be standard (no scheduler) or an int >=0")
+    else:
+        print("scheduler is standard and will never step")
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=patience, verbose=True)
 
     T = torch.Tensor([0,1]).to(device)    # integration time interval for ODE
 
@@ -331,7 +339,7 @@ def train_surf(config):
                                    options=dict(step_size=step_size))[-1]
                     valid_error.append(1e3 * chamfer_distance(v_out, v_gt)[0].item())
 
-                if epoch > 1 and epoch %10 ==0:
+                if epoch > 1 and epoch %10 ==0 and config.patience != 'standard':
                     old_lr = optimizer.param_groups[0]['lr']
                     scheduler.step(np.mean(valid_error).item())
                     new_lr = optimizer.param_groups[0]['lr']
