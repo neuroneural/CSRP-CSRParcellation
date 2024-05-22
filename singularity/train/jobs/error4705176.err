@@ -1,27 +1,0 @@
-<frozen importlib._bootstrap>:228: RuntimeWarning: scipy._lib.messagestream.MessageStream size changed, may indicate binary incompatibility. Expected 56 from C header, got 64 from PyObject
-  0%|          | 0/13 [00:00<?, ?it/s]  8%|▊         | 1/13 [00:00<00:06,  1.80it/s] 15%|█▌        | 2/13 [00:01<00:06,  1.81it/s] 23%|██▎       | 3/13 [00:01<00:05,  1.87it/s] 31%|███       | 4/13 [00:02<00:04,  1.86it/s] 38%|███▊      | 5/13 [00:02<00:04,  1.89it/s] 46%|████▌     | 6/13 [00:03<00:03,  1.86it/s] 54%|█████▍    | 7/13 [00:03<00:03,  1.88it/s] 62%|██████▏   | 8/13 [00:04<00:02,  1.90it/s] 69%|██████▉   | 9/13 [00:04<00:02,  1.91it/s] 77%|███████▋  | 10/13 [00:05<00:01,  1.92it/s] 85%|████████▍ | 11/13 [00:05<00:01,  1.93it/s] 92%|█████████▏| 12/13 [00:06<00:00,  1.93it/s]100%|██████████| 13/13 [00:06<00:00,  1.90it/s]100%|██████████| 13/13 [00:06<00:00,  1.89it/s]
-  0%|          | 0/58 [00:00<?, ?it/s]  2%|▏         | 1/58 [00:00<00:29,  1.94it/s]  3%|▎         | 2/58 [00:01<00:28,  1.94it/s]  5%|▌         | 3/58 [00:01<00:28,  1.94it/s]  7%|▋         | 4/58 [00:02<00:27,  1.94it/s]  9%|▊         | 5/58 [00:02<00:27,  1.92it/s] 10%|█         | 6/58 [00:03<00:27,  1.89it/s] 12%|█▏        | 7/58 [00:03<00:26,  1.90it/s] 14%|█▍        | 8/58 [00:04<00:26,  1.92it/s] 16%|█▌        | 9/58 [00:04<00:25,  1.91it/s] 17%|█▋        | 10/58 [00:05<00:24,  1.92it/s] 19%|█▉        | 11/58 [00:05<00:24,  1.92it/s] 21%|██        | 12/58 [00:06<00:23,  1.92it/s] 22%|██▏       | 13/58 [00:06<00:23,  1.91it/s] 24%|██▍       | 14/58 [00:07<00:22,  1.92it/s] 26%|██▌       | 15/58 [00:07<00:22,  1.92it/s] 28%|██▊       | 16/58 [00:08<00:21,  1.93it/s] 29%|██▉       | 17/58 [00:08<00:21,  1.93it/s] 31%|███       | 18/58 [00:09<00:20,  1.94it/s] 33%|███▎      | 19/58 [00:09<00:20,  1.94it/s] 34%|███▍      | 20/58 [00:10<00:19,  1.94it/s] 36%|███▌      | 21/58 [00:10<00:19,  1.89it/s] 38%|███▊      | 22/58 [00:11<00:18,  1.90it/s] 40%|███▉      | 23/58 [00:11<00:18,  1.91it/s] 41%|████▏     | 24/58 [00:12<00:17,  1.92it/s] 43%|████▎     | 25/58 [00:13<00:17,  1.92it/s] 45%|████▍     | 26/58 [00:13<00:16,  1.93it/s] 47%|████▋     | 27/58 [00:14<00:16,  1.87it/s] 48%|████▊     | 28/58 [00:14<00:15,  1.90it/s] 50%|█████     | 29/58 [00:15<00:15,  1.91it/s] 52%|█████▏    | 30/58 [00:15<00:14,  1.93it/s] 53%|█████▎    | 31/58 [00:16<00:13,  1.93it/s] 55%|█████▌    | 32/58 [00:16<00:13,  1.92it/s] 57%|█████▋    | 33/58 [00:17<00:12,  1.93it/s] 59%|█████▊    | 34/58 [00:17<00:12,  1.94it/s] 60%|██████    | 35/58 [00:18<00:11,  1.94it/s] 62%|██████▏   | 36/58 [00:18<00:11,  1.95it/s] 64%|██████▍   | 37/58 [00:19<00:10,  1.95it/s] 66%|██████▌   | 38/58 [00:19<00:10,  1.95it/s] 67%|██████▋   | 39/58 [00:20<00:09,  1.95it/s] 69%|██████▉   | 40/58 [00:20<00:09,  1.95it/s] 71%|███████   | 41/58 [00:21<00:08,  1.93it/s] 72%|███████▏  | 42/58 [00:21<00:08,  1.94it/s] 74%|███████▍  | 43/58 [00:22<00:07,  1.95it/s] 76%|███████▌  | 44/58 [00:22<00:07,  1.95it/s] 78%|███████▊  | 45/58 [00:23<00:06,  1.94it/s] 79%|███████▉  | 46/58 [00:23<00:06,  1.93it/s] 81%|████████  | 47/58 [00:24<00:05,  1.94it/s] 83%|████████▎ | 48/58 [00:24<00:05,  1.93it/s] 84%|████████▍ | 49/58 [00:25<00:04,  1.94it/s] 86%|████████▌ | 50/58 [00:25<00:04,  1.94it/s] 88%|████████▊ | 51/58 [00:26<00:03,  1.94it/s] 90%|████████▉ | 52/58 [00:26<00:03,  1.93it/s] 91%|█████████▏| 53/58 [00:27<00:02,  1.94it/s] 93%|█████████▎| 54/58 [00:28<00:02,  1.92it/s] 95%|█████████▍| 55/58 [00:28<00:01,  1.92it/s] 97%|█████████▋| 56/58 [00:29<00:01,  1.92it/s] 98%|█████████▊| 57/58 [00:29<00:00,  1.90it/s]100%|██████████| 58/58 [00:30<00:00,  1.92it/s]100%|██████████| 58/58 [00:30<00:00,  1.93it/s]
-  0%|          | 0/206 [00:00<?, ?it/s]  0%|          | 0/206 [00:09<?, ?it/s]
-Traceback (most recent call last):
-  File "/cortexode/train.py", line 313, in <module>
-    train_seg(config)
-  File "/cortexode/train.py", line 85, in train_seg
-    seg_out = segnet(volume_in)
-  File "/opt/miniconda3/envs/csrf/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
-    return forward_call(*input, **kwargs)
-  File "/opt/miniconda3/envs/csrf/lib/python3.9/site-packages/monai/networks/nets/swin_unetr.py", line 301, in forward
-    hidden_states_out = self.swinViT(x_in, self.normalize)
-  File "/opt/miniconda3/envs/csrf/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
-    return forward_call(*input, **kwargs)
-  File "/opt/miniconda3/envs/csrf/lib/python3.9/site-packages/monai/networks/nets/swin_unetr.py", line 1040, in forward
-    x0_out = self.proj_out(x0, normalize)
-  File "/opt/miniconda3/envs/csrf/lib/python3.9/site-packages/monai/networks/nets/swin_unetr.py", line 1027, in proj_out
-    x = rearrange(x, "n c d h w -> n d h w c")
-  File "/opt/miniconda3/envs/csrf/lib/python3.9/site-packages/monai/utils/module.py", line 443, in __call__
-    raise self._exception
-  File "/opt/miniconda3/envs/csrf/lib/python3.9/site-packages/monai/utils/module.py", line 395, in optional_import
-    pkg = __import__(module)  # top level module
-monai.utils.module.OptionalImportError: from einops import rearrange (No module named 'einops').
-
-For details about installing the optional dependencies, please visit:
-    https://docs.monai.io/en/latest/installation.html#installing-the-recommended-dependencies

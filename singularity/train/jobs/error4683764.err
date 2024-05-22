@@ -1,8 +1,0 @@
-  File "train.py", line 168
-  File "train.py", line 168
-        if config.model_type == 'csrf" 
-if config.model_type == 'csrf" 
-                                                                    ^
-^
-SyntaxErrorSyntaxError: : EOL while scanning string literalEOL while scanning string literal
-

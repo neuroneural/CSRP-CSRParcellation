@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH -n 1
-#SBATCH -c 4
-#SBATCH --mem=20g
+#SBATCH -c 8
+#SBATCH --mem=40g
 #SBATCH -p qTRDGPU
 #SBATCH --gres=gpu:A40:1
-#SBATCH -t 0-00:10
+#SBATCH -t 5-00:00
 #SBATCH -J vclh
 #SBATCH -e jobs/error%A_%a.err
 #SBATCH -o jobs/out%A_%a.out

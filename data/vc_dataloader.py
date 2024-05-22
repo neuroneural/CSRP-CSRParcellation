@@ -19,7 +19,7 @@ class VertexData:
         self.v = torch.Tensor(v)
         self.f = torch.LongTensor(f)
         # Convert labels to float32 to avoid byte order issues
-        self.labels = torch.from_numpy(labels.astype(np.float32)).long()
+        self.labels = torch.from_numpy(labels.astype(np.float32)).long()#converting to float is a workaround for some endian problems
         self.subid = subid
         self.color_map = torch.Tensor(color_map)
     
@@ -113,5 +113,7 @@ class CSRVertexLabeledDataset(Dataset):
         """
         annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
         labels, _, _ = nib.freesurfer.io.read_annot(annot_file)
+        print('max labels',np.max(labels))
+        print('min labels',np.min(labels))
         labels = labels + 1#added to shift from -1 to 0
         return labels

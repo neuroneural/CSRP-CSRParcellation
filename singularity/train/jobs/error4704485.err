@@ -1,5 +1,0 @@
-<frozen importlib._bootstrap>:228: RuntimeWarning: scipy._lib.messagestream.MessageStream size changed, may indicate binary incompatibility. Expected 56 from C header, got 64 from PyObject
-Traceback (most recent call last):
-  File "/cortexode/train.py", line 15, in <module>
-    from model.segmenterfactory import SegmenterFactory
-ModuleNotFoundError: No module named 'model.segmenterfactory'

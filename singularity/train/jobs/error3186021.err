@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "train.py", line 265, in <module>
-    train_seg(config)
-  File "train.py", line 43, in train_seg
-    trainset = load_seg_data(config, data_usage='train')
-  File "/cortexode/data/dataloader.py", line 51, in load_seg_data
-    subject_list = sorted(os.listdir(data_dir))
-FileNotFoundError: [Errno 2] No such file or directory: '/data/users2/washbee/speedrun/cortexode-data-rp/train/'

@@ -1,3 +1,0 @@
-  0%|          | 0/1 [00:00<?, ?it/s]/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/nn/functional.py:3063: UserWarning: Default upsampling behavior when mode=trilinear is changed to align_corners=False since 0.4.0. Please specify align_corners=True if the old behavior is desired. See the documentation of nn.Upsample for details.
-  "See the documentation of nn.Upsample for details.".format(mode))
-100%|██████████| 1/1 [00:06<00:00,  6.59s/it]100%|██████████| 1/1 [00:06<00:00,  6.59s/it]

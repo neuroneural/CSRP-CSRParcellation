@@ -1,2 +1,0 @@
-  0%|          | 0/1 [00:00<?, ?it/s]/opt/slurmnfs/slurmd/lhotse/job4409165/slurm_script: line 36: 1876193 Killed                  singularity exec --nv --bind /data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/speedrun/CortexODE_fork:/cortexode /data/users2/washbee/containers/speedrun/cortexODE_sr_sandbox/ /cortexode/singularity/benchmarks/euler/bm.pred2.sh
-slurmstepd: error: Detected 2 oom-kill event(s) in StepId=4409165.batch. Some of your processes may have been killed by the cgroup out-of-memory handler.

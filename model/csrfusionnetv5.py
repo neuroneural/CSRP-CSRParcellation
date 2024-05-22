@@ -14,10 +14,10 @@ from model.deformationgnn import DeformationGNN
 from pytorch3d.structures import Meshes
 
 class NodeFeatureNet(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=1,use_pytorch3d=True):
+    def __init__(self, C=128, K=5, n_scale=1,use_pytorch3d_normal=True):
         super(NodeFeatureNet, self).__init__()
         # mlp layers
-        self.use_pytorch3d = use_pytorch3d
+        self.use_pytorch3d_normal = use_pytorch3d_normal
         self.fc1 = nn.Linear(6, C)
         self.fc2 = nn.Linear(2*C, C*4)
         self.fc3 = nn.Linear(C*4, C*2)
@@ -48,7 +48,7 @@ class NodeFeatureNet(nn.Module):
         z_local = self.localfc(z_local)
         z_local = F.leaky_relu(z_local,0.2)#New relu
         # point feature
-        # if not self.use_pytorch3d:
+        # if not self.use_pytorch3d_normal:
         #     normal = compute_normal(v,self.f)#depricate this
         # else:
         #     mesh = Meshes(verts=v, faces=self.f)
@@ -107,10 +107,10 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
     
 class DeformBlockGNN(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True, gat_heads=8,use_pytorch3d=True):
+    def __init__(self, C=128, K=5, n_scale=3, sf=.1, gnn_layers=2, use_gcn=True, gat_heads=8,use_pytorch3d_normal=True):
         super(DeformBlockGNN, self).__init__()
         self.sf=sf
-        self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale,use_pytorch3d=use_pytorch3d)
+        self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale,use_pytorch3d_normal=use_pytorch3d_normal)
         # Initialize ResidualGNN with parameters adjusted for the task
         self.gnn = DeformationGNN(input_features=C*2,  # Adjust based on NodeFeatureNet output
                                    hidden_features=C,
@@ -134,7 +134,7 @@ class DeformBlockGNN(nn.Module):
         dx = self.gnn(x, self.edge_list)*self.sf #threshold the deformation like before
         return dx
 
-class CSRFnetV3(nn.Module):
+class CSRFnetV5(nn.Module):
     """
     The deformation network of CortexODE model.
 
@@ -150,10 +150,10 @@ class CSRFnetV3(nn.Module):
                        gnn_layers=5,
                        use_gcn=True,
                        gat_heads=8,
-                       use_pytorch3d=True
+                       use_pytorch3d_normal=True
                        ):
         
-        super(CSRFnetV3, self).__init__()
+        super(CSRFnetV5, self).__init__()
 
         C = dim_h        # hidden dimension
         K = kernel_size  # kernel size
@@ -166,7 +166,7 @@ class CSRFnetV3(nn.Module):
                                      gnn_layers=gnn_layers,
                                      use_gcn=use_gcn,
                                      gat_heads=gat_heads,
-                                     use_pytorch3d=use_pytorch3d
+                                     use_pytorch3d_normal=use_pytorch3d_normal
                                      )
         
     def set_data(self, x, V,f=None,reduced_DOF=False):

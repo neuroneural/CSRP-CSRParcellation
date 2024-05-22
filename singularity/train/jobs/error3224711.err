@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "eval.py", line 94, in <module>
-    result_dir = config.result_dir  # directory for saving the predicted surfaces
-AttributeError: 'Namespace' object has no attribute 'result_dir'
-Traceback (most recent call last):
-  File "eval.py", line 94, in <module>
-    result_dir = config.result_dir  # directory for saving the predicted surfaces
-AttributeError: 'Namespace' object has no attribute 'result_dir'
