@@ -33,6 +33,6 @@ def transform_and_append_data(source_csv, target_csv):
         writer.writerows(transformed_rows)
 
 # Usage
-source_csv_path = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/exp_csrf_gnn_3/model/training_log_csrf_euler.csv'
+source_csv_path = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/exp_vc_gnn_0/model/'
 target_csv_path = 'results_exp_csrf_gnn_3.csv'
 transform_and_append_data(source_csv_path, target_csv_path)
