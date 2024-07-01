@@ -10,8 +10,11 @@ def load_config():
     parser.add_argument('--data_dir', default="../dataset/hcp600/", type=str, help="directory of the dataset")
     parser.add_argument('--model_dir', default="./ckpts/model/", type=str, help="directory for saving the models")
     parser.add_argument('--model_type', default="csrf", type=str, help="either: [csrf, cortexode]")
+    parser.add_argument('--segmentation_model_path', default="", type=str, help="path for segmentation model.")
+    
     parser.add_argument('--seg_model_type', default="SegUnet", type=str, help="either: [SwinUNETR,MonaiUnet,SegUnet]")
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
+    parser.add_argument('--continue', default="no", type=str, help="continue training [yes, no].")
     parser.add_argument('--start_epoch', default=1, type=int, help="start counting at 1 for start epochs.")
     parser.add_argument('--data_name', default="hcp", type=str, help="name of the dataset")
     parser.add_argument('--train_type', default="surf", type=str, help="type of training: [seg, surf,self_surf]")
@@ -58,6 +61,12 @@ def load_config():
     parser.add_argument('--dim_h', default=128, type=int, help="dimension of hidden layers")
     parser.add_argument('--n_scale', default=3, type=int, help="num of scales for multi-scale inputs")
     
+    parser.add_argument('--deform_model_dir', default="", type=str, help="deform model dir")
+    parser.add_argument('--classification_model_dir', default="", type=str, help="classification model dir")
+    parser.add_argument('--deform_model_file', default="", type=str, help="deform model file")
+    parser.add_argument('--classify_model_file', default="", type=str, help="classification model file")
+    parser.add_argument('--tagdeform', default="tagname", type=str, help="deformation tag")
+    parser.add_argument('--tagclassification', default="tagname", type=str, help="classification tag")
     # for testing
     parser.add_argument('--test_type', default="pred", type=str, help="type of testing: [init, pred, eval]")
     parser.add_argument('--init_dir', default="./ckpts/init/", type=str, help="directory for saving the initial surfaces")

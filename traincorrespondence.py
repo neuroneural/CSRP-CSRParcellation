@@ -11,6 +11,7 @@ from data.v2ccdataloader import FSAVGBrainDataset
 from model.net import CortexODE, Unet
 from model.csrfusionnetv3 import CSRFnetV3
 from model.csrfunetv1 import CSRFUnetV1
+from model.csrfunetv2 import CSRFUnetV2
 from util.mesh import compute_dice
 
 from pytorch3d.loss import chamfer_distance
@@ -75,9 +76,9 @@ def train_surf(config):
     
     # create log file
     if config.version=="0":
-        log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{solver}"
+        log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{solver}_lr{config.lr}.log"
     else:
-        log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}"
+        log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}_lr{config.lr}.log"
 
     # If the GNN type is 'gat', include `gat_heads` in the filename
     if config.gnn == 'gat':
@@ -102,6 +103,13 @@ def train_surf(config):
     print('version 3 is loading')
     if config.model_type == 'csrfunet' and config.version=='1':
         cortexode = CSRFUnetV1(dim_h=C, kernel_size=K, n_scale=Q,
+                       sf=config.sf,
+                       gnn_layers=config.gnn_layers,
+                       use_gcn=False,
+                       gat_heads=config.gat_heads
+                      ).to(device)
+    elif config.model_type == 'csrfunet' and config.version=='2':
+        cortexode = CSRFUnetV2(dim_h=C, kernel_size=K, n_scale=Q,
                        sf=config.sf,
                        gnn_layers=config.gnn_layers,
                        use_gcn=False,
@@ -207,7 +215,7 @@ def train_surf(config):
                     v_gt = v_gt.to(device)
                     f_gt = f_gt.to(device)
 
-                    if config.model_type == 'csrf':
+                    if config.model_type == 'csrf' or  config.model_type == 'csrfunet':
                         cortexode.set_data(v_in, volume_in, f=f_in)
                     else:
                         cortexode.set_data(v_in, volume_in)    # set the input data
@@ -230,8 +238,8 @@ def train_surf(config):
                 logging.info('epoch:{}, validation error:{}'.format(epoch, np.mean(valid_error)))
                 logging.info('-------------------------------------')
                 # Log to CSV
-                csv_log_path = os.path.join(model_dir, f"training_log_{tag}_{solver}.csv")
-                fieldnames = ['surf_hemi', 'surf_type', 'version', 'epoch', 'training_loss', 'validation_error', 'gnn', 'gnn_layers', 'sf', 'gat_heads','solver']
+                csv_log_path = os.path.join(model_dir, f"training_log_{tag}_{solver}_lr{config.lr}.csv")
+                fieldnames = ['surf_hemi', 'surf_type', 'version', 'epoch', 'training_loss', 'validation_error', 'gnn', 'gnn_layers', 'sf', 'gat_heads','solver', 'learning_rate']
 
                 if not os.path.exists(csv_log_path):
                     with open(csv_log_path, 'w', newline='') as csvfile:
@@ -253,7 +261,8 @@ def train_surf(config):
                             'gnn_layers': config.gnn_layers,
                             'sf': config.sf,
                             'gat_heads': config.gat_heads,
-                            'solver':solver
+                            'solver': solver,
+                            'learning_rate': config.lr
                         })
                     elif config.gnn=='gcn':
                         writer.writerow({
@@ -267,29 +276,30 @@ def train_surf(config):
                             'gnn_layers': config.gnn_layers,
                             'sf': config.sf,
                             'gat_heads': 'NA',
-                            'solver':solver
+                            'solver': solver,
+                            'learning_rate': config.lr
                         })
 
         
         # save model checkpoints 
         if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
             if config.gnn=='gat':
-                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{epoch}epochs_{solver}.pt"
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{epoch}epochs_{solver}_lr{config.lr}.pt"
             elif config.gnn =='gcn':
-                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}.pt"
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}_lr{config.lr}.pt"
             elif config.gnn =='baseline':
-                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{epoch}epochs_{solver}.pt"
+                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{epoch}epochs_{solver}_lr{config.lr}.pt"
             else:
                 assert False,'update naming conventions for model file name'
             
             torch.save(cortexode.state_dict(), os.path.join(model_dir, model_filename))
     
     if config.gnn=='gat':
-        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{solver}.pt"
+        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{solver}_lr{config.lr}.pt"
     elif config.gnn =='gcn':
-        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}.pt"
+        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_sf{config.sf}_{solver}_lr{config.lr}.pt"
     elif config.gnn =='baseline':
-        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{solver}.pt"
+        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_sf{config.sf}_{solver}_lr{config.lr}.pt"
     else:
         assert False,'update naming conventions for model file name'
     

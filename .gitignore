@@ -5,3 +5,10 @@ __pycache__
 ckpts/
 *.err
 *.out
+*.log
+logparse/
+correspondence/
+v2cc/
+groupparcellation/
+*.pt
+wacvanalysis/

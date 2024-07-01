@@ -63,7 +63,7 @@ def train_seg(config):
     # initialize model
     # --------------------------
     logging.info("initalize model ...")
-    segnet = Unet(c_in=1, c_out=3).to(device)
+    segnet = Unet(c_in=1, c_out=3).to(device)#for analysis, this is how initial surfaces get created this model should be included. 
     optimizer = optim.Adam(segnet.parameters(), lr=lr)
     # in case you need to load a checkpoint
     # segnet.load_state_dict(torch.load(model_dir+'model_seg_'+data_name+'_'+tag+'_XXepochs.pt'))
@@ -219,7 +219,7 @@ def train_surf(config):
                        ).to(device)
     elif config.model_type == 'csrf' and config.version=='3':
         print('version 3 is loading')
-        cortexode = CSRFnetV3(dim_h=C, kernel_size=K, n_scale=Q,
+        cortexode = CSRFnetV3(dim_h=C, kernel_size=K, n_scale=Q,#for analysis, this model needs to be inluded.
                        sf=config.sf,
                        use_pytorch3d_normal=use_pytorch3d_normal,
                        gnn_layers=config.gnn_layers,
@@ -246,7 +246,7 @@ def train_surf(config):
                        ).to(device)
     else:
         print('baseline model is loading, cortexode')
-        cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
+        cortexode = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device) #for analysis, this is the baseline model and should be included. 
     
     model_path = None
     
@@ -300,8 +300,7 @@ def train_surf(config):
     for epoch in tqdm(range(start_epoch, n_epochs + 1)):
         avg_loss = []
         for idx, data in enumerate(trainloader):
-            volume_in, v_in, v_gt, f_in, f_gt = data
-
+            volume_in, v_in, v_gt, f_in, f_gt, _subid, _aff = data
             optimizer.zero_grad()
 
             volume_in = volume_in.to(device).float()
@@ -348,7 +347,7 @@ def train_surf(config):
             with torch.no_grad():
                 valid_error = []
                 for idx, data in enumerate(validloader):
-                    volume_in, v_in, v_gt, f_in, f_gt = data
+                    volume_in, v_in, v_gt, f_in, f_gt, _subid, _aff = data
 
                     optimizer.zero_grad()
 

@@ -47,6 +47,15 @@ def process_surface(v, f, data_name='hcp'):
         # normalize to [-1, 1]
         v = v + 128
         v = (v - [96, 112, 96]) / 112
+        #multiply by 112
+        #add [96,112,96]
+        #subtract 128
+        #add v[:,2] = v[:,2] + 32
+        #add v[:,1] = v[:,1] + 15
+        #mp v[:,1] = -v[:,1] 
+        #add v[:,0] = v[:,0] + 32 
+        #permute v = v[:,[0,2,1]].copy()
+        
     elif data_name == 'adni':
         # clip the surface according to the volume
         v[:,0] = v[:,0] - 40
@@ -79,7 +88,15 @@ def process_surface_inverse(v, f, data_name='hcp'):
         v[:,1] = - v[:,1]
         v[:,0] = v[:,0] + 32
         v = v[:,[0,2,1]].copy()
-
+        #multiply by 112
+        #add [96,112,96]
+        #subtract 128
+        #v[:,2] = v[:,2] + 32
+        #v[:,1] = v[:,1] + 15
+        #v[:,1] = -v[:,1] 
+        #v[:,0] = v[:,0] + 32 
+        #v = v[:,[0,2,1]].copy()
+        
     elif data_name == 'adni':
         v = v *104 + [88, 104, 88]
         v = v - 128

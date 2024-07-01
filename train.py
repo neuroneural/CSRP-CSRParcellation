@@ -28,6 +28,41 @@ import csv
 import torch.multiprocessing as mp
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+def extract_data_from_log(file_path):
+    data = []
+    with open(file_path, 'r') as file:
+        for line in file:
+            match = re.search(r'epoch:(\d+), validation error:(\d+\.\d+)', line)
+            if match:
+                epoch = int(match.group(1))
+                val_error = float(match.group(2))
+                data.append((epoch, val_error))
+    return data
+
+def find_best_model(log_dir, config):
+    best_val_error = float('inf')
+    best_model_path = None
+    for log_file in os.listdir(log_dir):
+        if log_file.endswith('.log'):
+            log_path = os.path.join(log_dir, log_file)
+            log_data = extract_data_from_log(log_path)
+            if log_data:
+                min_epoch, min_val_error = min(log_data, key=lambda x: x[1])
+                if min_val_error < best_val_error:
+                    best_val_error = min_val_error
+                    base_name = log_file.replace('.log', '')
+                    
+                    if config.gnn == 'gat':
+                        model_file = f"{base_name}_{min_epoch}epochs_{config.solver}.pt"
+                    elif config.gnn == 'gcn':
+                        model_file = f"{base_name}_{min_epoch}epochs_{config.solver}.pt"
+                    elif config.gnn == 'baseline':
+                        model_file = f"{base_name}_{min_epoch}epochs_{config.solver}.pt"
+                    else:
+                        assert False,'update naming conventions for model file name'
+                    
+                    best_model_path = os.path.join(log_dir, model_file)
+    return best_model_path, best_val_error
 
 def train_seg(config):
     """training WM segmentation"""
@@ -53,7 +88,6 @@ def train_seg(config):
     trainset = SegDataset(config=config, data_usage='train')
     validset = SegDataset(config=config, data_usage='valid')
 
-    #Updated
     trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=4)
     validloader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
     
@@ -63,9 +97,6 @@ def train_seg(config):
     logging.info("initalize model ...")
     segnet = Unet(c_in=1, c_out=3).to(device)
     optimizer = optim.Adam(segnet.parameters(), lr=lr)
-    # in case you need to load a checkpoint
-    # segnet.load_state_dict(torch.load(model_dir+'model_seg_'+data_name+'_'+tag+'_XXepochs.pt'))
-    # segnet.load_state_dict(torch.load('./ckpts/pretrained/adni/model_seg_adni_pretrained.pt'))
 
     # --------------------------
     # training model
@@ -117,8 +148,6 @@ def train_seg(config):
     # save final model
     torch.save(segnet.state_dict(),
                model_dir+'model_seg_'+data_name+'_'+tag+'.pt')
-
-
 
 def train_surf(config):
     """
@@ -256,11 +285,9 @@ def train_surf(config):
     # load dataset
     # --------------------------
     logging.info("load dataset ...")
-    #Updated
     trainset = BrainDataset(config, 'train')
     validset = BrainDataset(config, 'valid')
 
-    #Updated
     trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=4)
     validloader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
     
@@ -419,11 +446,14 @@ def train_surf(config):
     # save the final model
     torch.save(cortexode.state_dict(), os.path.join(model_dir, final_model_filename))
 
-
 if __name__ == '__main__':
     mp.set_start_method('spawn')
     config = load_config()
     if config.train_type == 'surf':
+        if config.continue == "yes":
+            best_model_path, best_val_error = find_best_model(config.model_dir, config)
+            if best_model_path:
+                config.model_file = best_model_path
         train_surf(config)
     elif config.train_type == 'seg':
         train_seg(config)

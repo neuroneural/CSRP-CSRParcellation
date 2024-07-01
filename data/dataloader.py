@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
-
+import re
 import os
 import numpy as np
 from tqdm import tqdm
@@ -17,14 +17,14 @@ from pytorch3d.structures import Meshes
 # ----------------------------
 
 class SegData():
-    def __init__(self, vol, seg, subj_id):
+    def __init__(self, vol, seg, subj_id,aff):
         self.vol = torch.Tensor(vol)
         self.seg = torch.Tensor(seg)
         self.subj_id = subj_id
+        self.aff = aff
     
     def getSeg(self):
-        return self.vol, self.seg, self.subj_id
-
+        return self.vol, self.seg, self.subj_id, self.aff
 
 class SegDataset(Dataset):
     def __init__(self, config, data_usage='train'):
@@ -37,16 +37,19 @@ class SegDataset(Dataset):
         self.config = config
         self.data_usage = data_usage
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted(os.listdir(self.data_dir))
+        # Assuming self.data_dir is the directory path containing subject folders and possibly other files
+        self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '',str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
         
     def __len__(self):
         return len(self.subject_list)
     
     def __getitem__(self, idx):
-        subid = self.subject_list[idx]
-        vol, seg,_ = self._load_seg_data_for_subject(subid,self.config,self.data_usage)
+        subid = f'{self.subject_list[idx]}'
+        subid = re.sub(r'\D', '', subid)
+
+        vol, seg,_,aff = self._load_seg_data_for_subject(subid,self.config,self.data_usage)
         assert subid == _
-        return vol, seg, subid
+        return vol, seg, subid, aff
     
     def _load_seg_data_for_subject(self, subid,config,data_usage):
         """
@@ -61,13 +64,13 @@ class SegDataset(Dataset):
 
         subject_list = sorted(os.listdir(data_dir))
         
-        
         if data_name == 'hcp' or data_name == 'adni':
             brain = nib.load(data_dir+subid+'/mri/orig.mgz')
             brain_arr = brain.get_fdata()
             brain_arr = (brain_arr / 255.).astype(np.float32)
             brain_arr = process_volume(brain_arr, data_name)
-
+            aff=brain.affine
+            
             seg = nib.load(data_dir+subid+'/mri/ribbon.mgz')
             seg_arr = seg.get_fdata()
             seg_arr = process_volume(seg_arr, data_name)[0]
@@ -77,7 +80,6 @@ class SegDataset(Dataset):
             seg_arr = np.zeros_like(seg_left, dtype=int)  # final label
             seg_arr += 1 * seg_left
             seg_arr += 2 * seg_right
-
         elif data_name == 'dhcp':
             brain = nib.load(data_dir+subid+'/'+subid+'_T2w.nii.gz')
             brain_arr = brain.get_fdata()
@@ -88,7 +90,7 @@ class SegDataset(Dataset):
             seg_arr = np.load(data_dir+subid+'/'+subid+'_wm_label.npy', allow_pickle=True)
             seg_arr = process_volume(seg_arr, data_name)[0]
             
-        return SegData(vol=brain_arr, seg=seg_arr,subj_id=subid).getSeg()
+        return SegData(vol=brain_arr, seg=seg_arr,subj_id=subid,aff=aff).getSeg()
 
 # ----------------------------
 #  for surface reconstruction
@@ -101,15 +103,16 @@ class BrainData():
     v_gt: vertices of input surface
     f_gt: faces of ground truth surface
     """
-    def __init__(self, volume, v_in, v_gt, f_in, f_gt):
+    def __init__(self, volume, v_in, v_gt, f_in, f_gt,aff=None):
         self.v_in = torch.Tensor(v_in)
         self.f_in = torch.LongTensor(f_in)
         self.v_gt = torch.Tensor(v_gt)
         self.f_gt = torch.LongTensor(f_gt)
         self.volume = torch.from_numpy(volume)
+        self.aff=aff
     
     def getBrain(self):
-        return self.volume, self.v_in, self.v_gt, self.f_in, self.f_gt
+        return self.volume, self.v_in, self.v_gt, self.f_in, self.f_gt,self.aff
         
         
 class BrainDataset(Dataset):
@@ -119,29 +122,29 @@ class BrainDataset(Dataset):
         a list of subject IDs for lazy loading.
         """
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted(os.listdir(self.data_dir))
+        self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
         self.config = config
         self.data_usage = data_usage
         self.mse_threshold = config.mse_threshold
-        
-        
     def __len__(self):
         return len(self.subject_list)
     
     def __getitem__(self, idx):
-        subid = self.subject_list[idx]
+        subid = f'{self.subject_list[idx]}'
+
+        subid = re.sub(r'\D', '', subid)
+
         # Load data for the subject identified by `subid`
         # Similar to the logic you've written inside your loop
         # but adjusted to load data for one subject only
         # For example:
-        brain_arr, v_in, v_gt, f_in, f_gt = self._load_surf_data_for_subject(subid,self.config,self.data_usage)
+        brain_arr, v_in, v_gt, f_in, f_gt,aff = self._load_surf_data_for_subject(subid,self.config,self.data_usage)
         
-        return brain_arr, v_in, v_gt, f_in, f_gt
+        return brain_arr, v_in, v_gt, f_in, f_gt, subid, aff
     
     # Function to calculate MSE
     def _calculate_mse(self,original, noisy):
         return 1000.0*np.mean((original - noisy) ** 2)
-
     
     def _binary_search_mse(self, original_vertices, faces, low, high, tolerance, device='cpu'):
         """
@@ -284,10 +287,10 @@ class BrainDataset(Dataset):
         n_inflate = config.n_inflate   # 2
         rho = config.rho    # 0.002
         lambd = config.lambd
-        
         # ------- load brain MRI ------- 
         if data_name == 'hcp' or data_name == 'adni':
             brain = nib.load(data_dir+subid+'/mri/orig.mgz')
+            brain_aff = brain.affine
             brain_arr = brain.get_fdata()
             brain_arr = (brain_arr / 255.).astype(np.float32)
         elif data_name == 'dhcp':
@@ -371,7 +374,7 @@ class BrainDataset(Dataset):
             v_gt, f_gt = process_surface(v_gt, f_gt, data_name)
         
         return BrainData(volume=brain_arr, v_in=v_in, v_gt=v_gt,
-                              f_in=f_in, f_gt=f_gt).getBrain()
+                              f_in=f_in, f_gt=f_gt,aff=brain_arr).getBrain()
 
 
     def _load_surf_data_for_subject(self, subid,config,data_usage):
