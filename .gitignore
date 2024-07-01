@@ -11,4 +11,5 @@ correspondence/
 v2cc/
 groupparcellation/
 *.pt
-wacvanalysis/
+results/
+model/
