@@ -11,10 +11,18 @@ import re
 import random
 
 class VertexData:
-    def __init__(self, brain_arr, v, f, labels, subid, color_map, v_in=None, f_in=None, nearest_labels=None, mask=None):
+    def __init__(self, brain_arr, v_gt, f_gt, labels, subid, color_map, v_in=None, f_in=None, nearest_labels=None, mask=None):
+        # Add print statements and assertions
+        assert brain_arr is not None, "brain_arr is None"
+        assert v_gt is not None, "v_gt is None"
+        assert f_gt is not None, "f_gt is None"
+        assert labels is not None, "labels are None"
+        assert subid is not None, "subid is None"
+        assert color_map is not None, "color_map is None"
+        
         self.brain_arr = torch.Tensor(brain_arr)
-        self.v = torch.Tensor(v)
-        self.f = torch.from_numpy(f.astype(np.float32)).long()  # converting to float is a workaround for some endian problems
+        self.v_gt = torch.Tensor(v_gt)
+        self.f_gt = torch.from_numpy(f_gt.astype(np.float32)).long()# converting to float is a workaround for some endian problems
         self.labels = torch.from_numpy(labels.astype(np.float32)).long()
         self.subid = subid
         self.color_map = torch.from_numpy(color_map.astype(np.float32)).long()
@@ -22,101 +30,127 @@ class VertexData:
         self.f_in = torch.from_numpy(f_in.astype(np.float32)).long() if f_in is not None else None
         self.nearest_labels = torch.from_numpy(nearest_labels.astype(np.float32)).long() if nearest_labels is not None else None
         self.mask = torch.Tensor(mask) if mask is not None else None
-    
     def get_data(self):
-        return self.brain_arr, self.v, self.f, self.labels, self.subid, self.color_map, self.v_in, self.f_in, self.nearest_labels, self.mask
+        return self.brain_arr, self.v_gt, self.f_gt, self.labels, self.subid, self.color_map, self.v_in, self.f_in, self.nearest_labels, self.mask
 
-class CSRVertexLabeledDataset(Dataset):
-    def __init__(self, config, data_usage='train', num_classes=37, new_format=False):
+class CSRVertexLabeledDatasetV3(Dataset):
+    def __init__(self, config, data_usage='train', num_classes=37):
         self.num_classes = num_classes
         self.config = config
         self.data_usage = data_usage
         self.data_dir = os.path.join(config.data_dir, data_usage)
         self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
-        self.new_format = new_format
-
     def __len__(self):
         return len(self.subject_list)
     
     def __getitem__(self, idx):
         subid = self.subject_list[idx]
         brain_arr, v_gt, f_gt, labels, color_map = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
-        if self.new_format:
-            v_in, f_in = self._load_input_mesh(subid)
-            normals = self._calculate_normals(v_in, f_in)
-            gt_normals = self._calculate_normals(v_gt, f_gt)
-            kdtree = KDTree(v_gt)
-            distances, indices = kdtree.query(v_in, k=1)
-            nearest_labels = labels[indices.flatten()]
-            mask = self._create_normal_mask(normals, gt_normals[indices.flatten()])
-            return VertexData(brain_arr, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask).get_data()
-        else:
-            return VertexData(brain_arr, v_gt, f_gt, labels, subid, color_map).get_data()
-
+        v_in, f_in = self._load_input_mesh(subid)
+        
+        assert v_in is not None, "v_in is None"
+        assert f_in is not None, "f_in is None"
+        
+        normals = self._calculate_normals(v_in, f_in)
+        gt_normals = self._calculate_normals(v_gt, f_gt)
+        kdtree = KDTree(v_gt)
+        distances, indices = kdtree.query(v_in, k=1)
+        nearest_labels = labels[indices.flatten()]
+        mask = self._create_normal_mask(normals, gt_normals[indices.flatten()])
+        # Add print statements and assertions for new format variables
+        assert brain_arr is not None, "brain_arr is None"
+        assert v_gt is not None, "v_gt is None"
+        assert f_gt is not None, "f_gt is None"
+        assert labels is not None, "labels are None"
+        assert subid is not None, "subid is None"
+        assert color_map is not None, "color_map is None"
+        assert v_in is not None, "v_in is None"
+        assert f_in is not None, "f_in is None"
+        assert nearest_labels is not None, "nearest_labels are None"
+        assert mask is not None, "mask is None"
+        
+        return VertexData(brain_arr, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask).get_data()
+    
     def _load_vertex_labeled_data_for_subject(self, subid, config, data_usage):
         data_dir = os.path.join(config.data_dir, data_usage)
         data_name = config.data_name
         surf_type = config.surf_type  # surf_type from config
         surf_hemi = config.surf_hemi  # surf_hemi from config
         atlas_dir = os.path.join(config.data_dir, data_usage, subid, 'label')
+        try:
+            if data_name == 'hcp' or data_name == 'adni':
+                brain = nib.load(os.path.join(data_dir, subid, 'mri', 'orig.mgz'))
+                brain_arr = brain.get_fdata()
+                brain_arr = (brain_arr / 255.).astype(np.float32)
+            elif data_name == 'dhcp':
+                brain = nib.load(os.path.join(data_dir, subid, f'{subid}_T2w.nii.gz'))
+                brain_arr = brain.get_fdata()
+                brain_arr = (brain_arr / 20).astype(np.float16)
+            brain_arr = process_volume(brain_arr, data_name)
+                
+            assert brain_arr is not None, f"Failed to load brain_arr for subject {subid}"
+        
+            if data_name == 'hcp':
+                v, f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial.deformed'))
+            elif data_name == 'adni':
+                v, f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial'))
+            elif data_name == 'dhcp':
+                surf_gt = nib.load(os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_pial.surf.gii'))
+                v, f = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
+                v_tmp = np.ones([v.shape[0], 4])
+                v_tmp[:, :3] = v
+                v = v_tmp.dot(np.linalg.inv(brain.affine).T)[:, :3]
+            v, f = process_surface(v, f, data_name)
+            assert v is not None and f is not None, f"Failed to load vertices or faces for subject {subid}"
+        
+            labels, color_map = self._load_vertex_labels(atlas_dir, surf_hemi, config.atlas)
+            assert labels is not None, f"Failed to load labels for subject {subid}"
+            assert color_map is not None, f"Failed to load color_map for subject {subid}"
+            return brain_arr, v, f, labels, color_map
+        except Exception as e:
+            print(f"Error loading data for subject {subid}: {e}")
+            return None, None, None, None, None
 
-        if data_name == 'hcp' or data_name == 'adni':
-            brain = nib.load(os.path.join(data_dir, subid, 'mri', 'orig.mgz'))
-            brain_arr = brain.get_fdata()
-            brain_arr = (brain_arr / 255.).astype(np.float32)
-        elif data_name == 'dhcp':
-            brain = nib.load(os.path.join(data_dir, subid, f'{subid}_T2w.nii.gz'))
-            brain_arr = brain.get_fdata()
-            brain_arr = (brain_arr / 20).astype(np.float16)
-        brain_arr = process_volume(brain_arr, data_name)
-
-        if data_name == 'hcp':
-            v, f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial.deformed'))
-        elif data_name == 'adni':
-            v, f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial'))
-        elif data_name == 'dhcp':
-            surf_gt = nib.load(os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_pial.surf.gii'))
-            v, f = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
-            v_tmp = np.ones([v.shape[0], 4])
-            v_tmp[:, :3] = v
-            v = v_tmp.dot(np.linalg.inv(brain.affine).T)[:, :3]
-        v, f = process_surface(v, f, data_name)
-
-        labels, color_map = self._load_vertex_labels(atlas_dir, surf_hemi, config.atlas)
-
-        return brain_arr, v, f, labels, color_map
 
     def _load_vertex_labels(self, atlas_dir, surf_hemi, atlas):
-        annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
-        labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
-        if self.config.atlas == 'aparc':
-            labels[labels == -1] = 4
-        else:
-            assert False, "label mapping not supported yet"
-        color_map = ctab[:, :3]
-        if color_map.shape[0] < len(_names): 
-            raise ValueError(f"Colormap does not have enough colors for the classes.")
-        return labels, color_map
+        try:
+            annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
+            labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
+            if self.config.atlas == 'aparc':
+                labels[labels == -1] = 4
+            else:
+                assert False, "label mapping not supported yet"
+            color_map = ctab[:, :3]
+            if color_map.shape[0] < len(_names): 
+                raise ValueError(f"Colormap does not have enough colors for the classes.")
+            return labels, color_map
+        except Exception as e:
+            print(f"Error loading vertex labels: {e}")
+            return None, None
 
     def _load_input_mesh(self, subid):
-        input_mesh_dir = self.config.parc_init_dir
-        surf_type = self.config.surf_type  # surf_type from config
-        surf_hemi = self.config.surf_hemi  # surf_hemi from config
+        try:
+            input_mesh_dir = self.config.parc_init_dir
+            surf_type = self.config.surf_type  # surf_type from config
+            surf_hemi = self.config.surf_hemi  # surf_hemi from config
 
-        # Get all available GNN layer files for the subject
-        pattern = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers\d_prediction'
-        available_files = [f for f in os.listdir(input_mesh_dir) if re.match(pattern, f)]
-        if not available_files:
-            raise FileNotFoundError(f"No input mesh files found for subject {subid} with surf_type {surf_type} and surf_hemi {surf_hemi}.")
+            # Get all available GNN layer files for the subject
+            pattern = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers\d_prediction'
+            available_files = [f for f in os.listdir(input_mesh_dir) if re.match(pattern, f)]
+            if not available_files:
+                raise FileNotFoundError(f"No input mesh files found for subject {subid} with surf_type {surf_type} and surf_hemi {surf_hemi}.")
 
-        # Extract the layer numbers and randomly select one
-        gnn_layers = [int(re.search(r'gnnlayers(\d)', f).group(1)) for f in available_files]
-        selected_layer = random.choice(gnn_layers)
-        filename = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers{selected_layer}_prediction'
-        input_mesh_path = os.path.join(input_mesh_dir, filename)
-        
-        v_in, f_in = nib.freesurfer.io.read_geometry(input_mesh_path)
-        return v_in, torch.from_numpy(f_in.astype(np.float32)).long().numpy()  # needed workaround.
+            # Extract the layer numbers and randomly select one
+            gnn_layers = [int(re.search(r'gnnlayers(\d)', f).group(1)) for f in available_files]
+            selected_layer = random.choice(gnn_layers)
+            filename = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers{selected_layer}_prediction'
+            input_mesh_path = os.path.join(input_mesh_dir, filename)
+            
+            v_in, f_in = nib.freesurfer.io.read_geometry(input_mesh_path)
+            return v_in, torch.from_numpy(f_in.astype(np.float32)).long().numpy()  # needed workaround.
+        except Exception as e:
+            print(f"Error loading input mesh for subject {subid}: {e}")
+            return None, None
 
     def _calculate_normals(self, v, f):
         verts = torch.tensor(v, dtype=torch.float32)

@@ -61,6 +61,6 @@ fi
 
 # Execute Python script with parameters set above
 echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, GAT Heads $gat_head"
-#/speedrun/csrf-data-dev/
+#/speedrun/wacv-data-dev/
 #/speedrun/cortexode-data-rp/
-python trainCSR_labelingv2.py --model_type 'csrvc' --patience 'standard' --visualize 'yes' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surfvc' --data_dir='/speedrun/csrf-data-dev/' --parc_init_dir='/cortexode/ckpts/hcp_vc_assym_gnn_0/parc_init/' --model_dir='/cortexode/ckpts/hcp_vc_assym_gnn_0/model/' --result_dir='/cortexode/ckpts/hcp_vc_assym_gnn_0/result/' --data_name='hcp'  --surf_hemi='lh' --surf_type='gm' --n_epochs=200 --start_epoch=1 --n_samples=150000 --tag='vc' --device='gpu' 
+python trainCSR_labelingv2.py --model_type 'csrvc' --patience 'standard' --visualize 'yes' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surfvc' --data_dir='/speedrun/wacv-data-dev/' --parc_init_dir='/cortexode/ckpts/hcp_vc_assym_gnn_0/parc_init/' --model_dir='/cortexode/ckpts/hcp_vc_assym_gnn_0/model/' --result_dir='/cortexode/ckpts/hcp_vc_assym_gnn_0/result/' --data_name='hcp'  --surf_hemi='lh' --surf_type='gm' --n_epochs=200 --start_epoch=1 --n_samples=150000 --tag='vc' --device='gpu' 
