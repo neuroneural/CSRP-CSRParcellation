@@ -4,26 +4,27 @@ import os
 import numpy as np
 import nibabel as nib
 from data.preprocess import process_volume, process_surface
-import matplotlib.pyplot as plt
 from sklearn.neighbors import KDTree
-import pytorch3d.ops
 import pytorch3d.structures
+import pytorch3d
 import re
+import random
 
 class VertexData:
-    def __init__(self, brain_arr, v, f, labels, subid, color_map, nearest_labels=None, mask=None):
+    def __init__(self, brain_arr, v, f, labels, subid, color_map, v_in=None, f_in=None, nearest_labels=None, mask=None):
         self.brain_arr = torch.Tensor(brain_arr)
         self.v = torch.Tensor(v)
-        self.f = torch.LongTensor(f)
+        self.f = torch.from_numpy(f.astype(np.float32)).long()  # converting to float is a workaround for some endian problems
         self.labels = torch.from_numpy(labels.astype(np.float32)).long()
         self.subid = subid
         self.color_map = torch.from_numpy(color_map.astype(np.float32)).long()
+        self.v_in = torch.Tensor(v_in) if v_in is not None else None
+        self.f_in = torch.from_numpy(f_in.astype(np.float32)).long() if f_in is not None else None
         self.nearest_labels = torch.from_numpy(nearest_labels.astype(np.float32)).long() if nearest_labels is not None else None
         self.mask = torch.Tensor(mask) if mask is not None else None
     
     def get_data(self):
-        return self.brain_arr, self.v, self.f, self.labels, self.subid, self.color_map, self.nearest_labels, self.mask
-
+        return self.brain_arr, self.v, self.f, self.labels, self.subid, self.color_map, self.v_in, self.f_in, self.nearest_labels, self.mask
 
 class CSRVertexLabeledDataset(Dataset):
     def __init__(self, config, data_usage='train', num_classes=37, new_format=False):
@@ -31,7 +32,7 @@ class CSRVertexLabeledDataset(Dataset):
         self.config = config
         self.data_usage = data_usage
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '',str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
+        self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
         self.new_format = new_format
 
     def __len__(self):
@@ -39,24 +40,24 @@ class CSRVertexLabeledDataset(Dataset):
     
     def __getitem__(self, idx):
         subid = self.subject_list[idx]
-        brain_arr, v, f, labels, color_map = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
+        brain_arr, v_gt, f_gt, labels, color_map = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
         if self.new_format:
-            gt_v, gt_f, gt_labels = self._load_ground_truth(subid)
-            normals = self._calculate_normals(v, f)
-            gt_normals = self._calculate_normals(gt_v, gt_f)
-            kdtree = KDTree(gt_v)
-            distances, indices = kdtree.query(v, k=1)
-            nearest_labels = gt_labels[indices.flatten()]
+            v_in, f_in = self._load_input_mesh(subid)
+            normals = self._calculate_normals(v_in, f_in)
+            gt_normals = self._calculate_normals(v_gt, f_gt)
+            kdtree = KDTree(v_gt)
+            distances, indices = kdtree.query(v_in, k=1)
+            nearest_labels = labels[indices.flatten()]
             mask = self._create_normal_mask(normals, gt_normals[indices.flatten()])
-            return VertexData(brain_arr, v, f, labels, subid, color_map, nearest_labels, mask).get_data()
+            return VertexData(brain_arr, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask).get_data()
         else:
-            return VertexData(brain_arr, v, f, labels, subid, color_map).get_data()
+            return VertexData(brain_arr, v_gt, f_gt, labels, subid, color_map).get_data()
 
     def _load_vertex_labeled_data_for_subject(self, subid, config, data_usage):
         data_dir = os.path.join(config.data_dir, data_usage)
         data_name = config.data_name
-        surf_type = 'gm'
-        surf_hemi = config.surf_hemi
+        surf_type = config.surf_type  # surf_type from config
+        surf_hemi = config.surf_hemi  # surf_hemi from config
         atlas_dir = os.path.join(config.data_dir, data_usage, subid, 'label')
 
         if data_name == 'hcp' or data_name == 'adni':
@@ -88,7 +89,7 @@ class CSRVertexLabeledDataset(Dataset):
     def _load_vertex_labels(self, atlas_dir, surf_hemi, atlas):
         annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
         labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
-        if self.config.atlas=='aparc':
+        if self.config.atlas == 'aparc':
             labels[labels == -1] = 4
         else:
             assert False, "label mapping not supported yet"
@@ -97,17 +98,31 @@ class CSRVertexLabeledDataset(Dataset):
             raise ValueError(f"Colormap does not have enough colors for the classes.")
         return labels, color_map
 
-    def _load_ground_truth(self, subid):
-        data_dir = os.path.join(self.config.data_dir, 'ground_truth')
-        gt_v, gt_f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', 'pial'))
-        gt_labels, _, _ = nib.freesurfer.io.read_annot(os.path.join(data_dir, subid, 'label', 'aparc.annot'))
-        return gt_v, gt_f, gt_labels
+    def _load_input_mesh(self, subid):
+        input_mesh_dir = self.config.parc_init_dir
+        surf_type = self.config.surf_type  # surf_type from config
+        surf_hemi = self.config.surf_hemi  # surf_hemi from config
+
+        # Get all available GNN layer files for the subject
+        pattern = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers\d_prediction'
+        available_files = [f for f in os.listdir(input_mesh_dir) if re.match(pattern, f)]
+        if not available_files:
+            raise FileNotFoundError(f"No input mesh files found for subject {subid} with surf_type {surf_type} and surf_hemi {surf_hemi}.")
+
+        # Extract the layer numbers and randomly select one
+        gnn_layers = [int(re.search(r'gnnlayers(\d)', f).group(1)) for f in available_files]
+        selected_layer = random.choice(gnn_layers)
+        filename = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers{selected_layer}_prediction'
+        input_mesh_path = os.path.join(input_mesh_dir, filename)
+        
+        v_in, f_in = nib.freesurfer.io.read_geometry(input_mesh_path)
+        return v_in, torch.from_numpy(f_in.astype(np.float32)).long().numpy()  # needed workaround.
 
     def _calculate_normals(self, v, f):
         verts = torch.tensor(v, dtype=torch.float32)
         faces = torch.tensor(f, dtype=torch.int64)
         mesh = pytorch3d.structures.Meshes(verts=[verts], faces=[faces])
-        normals = pytorch3d.ops.verts_normals(mesh)[0]
+        normals = mesh.verts_normals_packed()  # Correct function
         return normals.numpy()
 
     def _create_normal_mask(self, normals, gt_normals, threshold=60):

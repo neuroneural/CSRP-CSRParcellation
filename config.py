@@ -70,6 +70,7 @@ def load_config():
     # for testing
     parser.add_argument('--test_type', default="pred", type=str, help="type of testing: [init, pred, eval]")
     parser.add_argument('--init_dir', default="./ckpts/init/", type=str, help="directory for saving the initial surfaces")
+    parser.add_argument('--parc_init_dir', default="./ckpts/parc_init/", type=str, help="directory for saving the initial surfaces")
     parser.add_argument('--result_dir', default="./ckpts/result/", type=str, help="directory for saving the predicted surfaces")
 
 

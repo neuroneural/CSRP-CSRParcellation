@@ -19,6 +19,7 @@ from pytorch3d.structures import Meshes
 from pytorch3d.io import save_obj
 from config import load_config
 from plyfile import PlyData, PlyElement
+from data.preprocess import process_surface_inverse
 
 def get_num_classes(atlas):
     atlas_num_classes = {
@@ -30,10 +31,9 @@ def get_num_classes(atlas):
     }
     return atlas_num_classes.get(atlas, 0)
 
-def save_mesh_with_annotations(mesh, labels, save_path, color_map):
-    verts = mesh.verts_packed().cpu().numpy()
-    faces = mesh.faces_packed().cpu().numpy()
-
+def save_mesh_with_annotations(mesh, labels, save_path, color_map, data_name='hcp'):
+    verts, faces = process_surface_inverse(mesh.verts_packed().cpu().numpy(), mesh.faces_packed().cpu().numpy(), data_name)
+    
     invalid_mask = (labels < 0) | (labels >= color_map.size(1))
     if invalid_mask.any():
         print(f"Invalid labels found: {labels[invalid_mask]}")
@@ -54,7 +54,7 @@ def save_mesh_with_annotations(mesh, labels, save_path, color_map):
     vertex_element = PlyElement.describe(vertices, 'vertex')
     face_element = PlyElement.describe(faces, 'face')
 
-    PlyData([vertex_element, face_element], text=True).write(save_path)
+    PlyData([vertex_element, face_element], text=True).write(save_path)#replace with freeview compatible stl file and annotation file.
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
     dice_scores = []
@@ -79,26 +79,47 @@ def compute_dice(pred, target, num_classes, exclude_classes=[]):
         
     return np.mean(dice_scores)
 
-def visualize_and_save_mesh(csrvcnet, validloader, result_dir, device, config, epoch):
-    for idx, data in enumerate(validloader):
-        volume_in, v_in, f_in, labels, subid, color_map, *optional_data = data
-        
-        if optional_data:
-            nearest_labels, mask = optional_data  # Unpack new data fields if present
+def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, epoch, new_format=False):
+    if not new_format:
+        for idx, data in enumerate(dataloader):
+            volume_in, v_gt, f_gt, labels, subid, color_map = data
+            
+            volume_in = volume_in.to(device).float()
+            v_gt = v_gt.to(device)
+            f_gt = f_gt.to(device)
+            labels = labels.to(device)
 
-        volume_in = volume_in.to(device).float()
-        v_in = v_in.to(device)
-        f_in = f_in.to(device)
-        labels = labels.to(device)
+            csrvcnet.set_data(v_gt, volume_in, f=f_gt)
+            logits = csrvcnet(v_gt)
+            preds = torch.argmax(logits, dim=2)
+            preds = preds.squeeze(0)
+            mesh = Meshes(verts=v_gt, faces=f_gt)
+            save_path = os.path.join(result_dir, f"annotated_mesh_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+            save_mesh_with_annotations(mesh, preds, save_path, color_map)
+            print(f"Saved annotated mesh for subject {subid[0]} to {save_path}")
+    else:
+        for idx, data in enumerate(dataloader):
+            volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
+            
+            volume_in = volume_in.to(device).float()
+            v_in = v_in.to(device)
+            f_in = f_in.to(device)
+            labels = labels.to(device)
 
-        csrvcnet.set_data(v_in, volume_in, f=f_in)
-        logits = csrvcnet(v_in)
-        preds = torch.argmax(logits, dim=2)
-        preds = preds.squeeze(0)
-        mesh = Meshes(verts=v_in, faces=f_in)
-        save_path = os.path.join(result_dir, f"annotated_mesh_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
-        save_mesh_with_annotations(mesh, preds, save_path, color_map)
-        print(f"Saved annotated mesh for subject {subid[0]} to {save_path}")
+            csrvcnet.set_data(v_in, volume_in, f=f_in)
+            logits = csrvcnet(v_in)
+            preds = torch.argmax(logits, dim=2)
+            preds = preds.squeeze(0)
+
+            mesh_in = Meshes(verts=v_in, faces=f_in)
+            save_path_in = os.path.join(result_dir, f"annotated_mesh_in_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+            save_mesh_with_annotations(mesh_in, preds, save_path_in, color_map)
+            print(f"Saved annotated input mesh for subject {subid[0]} to {save_path_in}")
+
+            mesh_gt = Meshes(verts=v_gt.to(device), faces=f_gt.to(device))
+            save_path_gt = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+            save_mesh_with_annotations(mesh_gt, preds, save_path_gt, color_map)
+            print(f"Saved annotated ground truth mesh for subject {subid[0]} to {save_path_gt}")
 
 def train_surfvc(config):
     model_dir = config.model_dir
@@ -183,16 +204,18 @@ def train_surfvc(config):
     logging.info("load dataset ...")
     trainset = CSRVertexLabeledDataset(config, 'train', new_format=True)
     validset = CSRVertexLabeledDataset(config, 'valid', new_format=False)
+    newvalidset = CSRVertexLabeledDataset(config, 'valid', new_format=True)
 
     trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=4)
     validloader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
+    newvalidloader = DataLoader(newvalidset, batch_size=1, shuffle=False, num_workers=4)
     
     logging.info("start training ...")
     for epoch in tqdm(range(start_epoch, n_epochs + 1)):
         avg_loss = []
         subs = 0
         for idx, data in enumerate(trainloader):
-            volume_in, v_in, f_in, labels, subid, color_map, *optional_data = data
+            volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
 
             optimizer.zero_grad()
 
@@ -200,6 +223,7 @@ def train_surfvc(config):
             v_in = v_in.to(device)
             f_in = f_in.to(device)
             labels = labels.to(device)
+            mask = mask.to(device)
 
             csrvcnet.set_data(v_in, volume_in, f=f_in)
 
@@ -212,7 +236,7 @@ def train_surfvc(config):
                 print(f"Labels range: {labels.min()} to {labels.max()}")
                 continue
 
-            loss = nn.CrossEntropyLoss()(logits, labels)
+            loss = nn.CrossEntropyLoss()(logits[mask.bool()], labels[mask.bool()])
             
             avg_loss.append(loss.item())
             loss.backward()
@@ -228,16 +252,16 @@ def train_surfvc(config):
                 exclude_classes = [4] if config.atlas == 'aparc' else []
 
                 for idx, data in enumerate(validloader):
-                    volume_in, v_in, f_in, labels, subid, color_map = data
+                    volume_in, v_gt, f_gt, labels, subid, color_map = data
 
                     volume_in = volume_in.to(device).float()
-                    v_in = v_in.to(device)
-                    f_in = f_in.to(device)
+                    v_gt = v_gt.to(device)
+                    f_gt = f_gt.to(device)
                     labels = labels.to(device)
 
-                    csrvcnet.set_data(v_in, volume_in, f=f_in)
+                    csrvcnet.set_data(v_gt, volume_in, f=f_gt)
 
-                    logits = csrvcnet(v_in)
+                    logits = csrvcnet(v_gt)
                     logits = logits.permute(0, 2, 1)
 
                     if torch.any(labels < 0) or torch.any(labels >= num_classes):
@@ -304,7 +328,7 @@ def train_surfvc(config):
 
                 if visualize:
                     visualize_and_save_mesh(csrvcnet, validloader, config.result_dir, device, config, epoch)
-
+                    visualize_and_save_mesh(csrvcnet, newvalidloader, config.result_dir, device, config, epoch, new_format=True)
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             if config.gnn == 'gat':
                 model_filename = f"model_vertex_classification_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_heads{config.gat_heads}_{epoch}epochs.pt"
