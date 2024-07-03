@@ -104,7 +104,8 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
             volume_in = volume_in.to(device).float()
             v_in = v_in.to(device)
             f_in = f_in.to(device)
-            labels = labels.to(device)
+            nearest_labels = nearest_labels.to(device)
+            mask = mask.to(device)
 
             csrvcnet.set_data(v_in, volume_in, f=f_in)
             logits = csrvcnet(v_in)
@@ -222,7 +223,7 @@ def train_surfvc(config):
             volume_in = volume_in.to(device).float()
             v_in = v_in.to(device)
             f_in = f_in.to(device)
-            labels = labels.to(device)
+            nearest_labels = nearest_labels.to(device)
             mask = mask.to(device)
 
             csrvcnet.set_data(v_in, volume_in, f=f_in)
@@ -231,12 +232,23 @@ def train_surfvc(config):
 
             logits = logits.permute(0, 2, 1)
 
-            if torch.any(labels < 0) or torch.any(labels >= num_classes):
+            if torch.any(nearest_labels < 0) or torch.any(nearest_labels >= num_classes):
                 print(f"Invalid label detected in batch {idx} of epoch {epoch}")
-                print(f"Labels range: {labels.min()} to {labels.max()}")
+                print(f"Nearest labels range: {nearest_labels.min()} to {nearest_labels.max()}")
                 continue
 
-            loss = nn.CrossEntropyLoss()(logits[mask.bool()], labels[mask.bool()])
+            print('logits.shape', logits.shape)
+            print('nearest_labels.shape', nearest_labels.shape)
+            print('mask.shape', mask.shape)
+
+            masked_logits = logits[:, :, mask.squeeze(0).bool()]
+            masked_labels = nearest_labels[:,mask.squeeze(0).bool()]
+
+            # Check shapes for debugging
+            print('masked_logits.shape:', masked_logits.shape)  # Expected shape: [M, 36] where M is the number of vertices after masking
+            print('masked_labels.shape:', masked_labels.shape)  # Expected shape: [M]
+
+            loss = nn.CrossEntropyLoss()(masked_logits, masked_labels)
             
             avg_loss.append(loss.item())
             loss.backward()
