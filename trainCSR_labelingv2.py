@@ -21,6 +21,18 @@ from pytorch3d.io import save_obj
 from config import load_config
 from plyfile import PlyData, PlyElement
 from data.preprocess import process_surface_inverse
+from scipy.spatial import cKDTree
+
+
+def chamfer_distance(v1, v2):
+    
+    kdtree1 = cKDTree(v1)
+    kdtree2 = cKDTree(v2)
+
+    distances1, _ = kdtree1.query(v2)
+    distances2, _ = kdtree2.query(v1)
+
+    return np.mean(distances1) + np.mean(distances2)
 
 def get_num_classes(atlas):
     atlas_num_classes = {
@@ -107,6 +119,12 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
     else:
         for idx, data in enumerate(dataloader):
             volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
+            
+            # Calculate and print the chamfer distance between v_in and v_gt using cKDTree
+            v_in_np = v_in.squeeze().cpu().numpy()
+            v_gt_np = v_gt.squeeze().cpu().numpy()
+            chamfer_dist = chamfer_distance(v_in_np, v_gt_np)
+            print(f"Chamfer distance for debugging purposes for subject {subid[0]}: {chamfer_dist}")
             
             volume_in = volume_in.to(device).float()
             v_in = v_in.to(device)
