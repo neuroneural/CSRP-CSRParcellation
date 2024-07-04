@@ -3,12 +3,26 @@ from torch.utils.data import Dataset
 import os
 import numpy as np
 import nibabel as nib
-from data.preprocess import process_volume, process_surface
+from data.preprocess import process_volume, process_surface, process_surface_inverse
 from sklearn.neighbors import KDTree
 import pytorch3d.structures
 import pytorch3d
 import re
 import random
+
+from scipy.spatial import cKDTree
+
+
+def chamfer_distance(v1, v2):
+    
+    kdtree1 = cKDTree(v1)
+    kdtree2 = cKDTree(v2)
+
+    distances1, _ = kdtree1.query(v2)
+    distances2, _ = kdtree2.query(v1)
+
+    return np.mean(distances1) + np.mean(distances2)
+
 
 class VertexData:
     def __init__(self, brain_arr, v_gt, f_gt, labels, subid, color_map, v_in=None, f_in=None, nearest_labels=None, mask=None):
@@ -48,6 +62,15 @@ class CSRVertexLabeledDatasetV3(Dataset):
         brain_arr, v_gt, f_gt, labels, color_map = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
         v_in, f_in = self._load_input_mesh(subid)
         
+        print('DATALOADER MAX MIN')
+        print('v_gt  v_in')
+        print(np.max(v_gt),np.max(v_in))
+        print(np.min(v_gt),np.min(v_in))
+        # v_in_np = v_in.squeeze().cpu().numpy()
+        # v_gt_np = v_gt.squeeze().cpu().numpy()
+        chamfer_dist = chamfer_distance(v_in, v_gt)
+        print(f"DATALOADER: Chamfer distance for debugging purposes for subject {subid[0]}: {chamfer_dist}")
+            
         assert v_in is not None, "v_in is None"
         assert f_in is not None, "f_in is None"
         
@@ -147,6 +170,8 @@ class CSRVertexLabeledDatasetV3(Dataset):
             input_mesh_path = os.path.join(input_mesh_dir, filename)
             
             v_in, f_in = nib.freesurfer.io.read_geometry(input_mesh_path)
+            v_in, f_in = process_surface(v_in,f_in,self.config.data_name)
+        
             return v_in, torch.from_numpy(f_in.astype(np.float32)).long().numpy()  # needed workaround.
         except Exception as e:
             print(f"Error loading input mesh for subject {subid}: {e}")
