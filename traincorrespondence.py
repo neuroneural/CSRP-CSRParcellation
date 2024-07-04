@@ -279,8 +279,6 @@ def train_surf(config):
                             'solver': solver,
                             'learning_rate': config.lr
                         })
-
-        
         # save model checkpoints 
         if epoch == start_epoch or epoch == n_epochs or epoch%10==0:
             if config.gnn=='gat':

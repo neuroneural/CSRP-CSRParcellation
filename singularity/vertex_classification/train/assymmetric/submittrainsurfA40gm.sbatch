@@ -20,10 +20,10 @@ module load singularity/3.10.2
 singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/vertex_classification/train/assymmetric/trainsurfvclhgm.sh $SLURM_ARRAY_TASK_ID&
 pid1=$!  # Store the process ID of the second process
 
-# singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/vertex_classification/train/assymmetric/trainsurfvcrhgm.sh $SLURM_ARRAY_TASK_ID&
-# pid2=$!  # Store the process ID of the second process
+singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/singularity/vertex_classification/train/assymmetric/trainsurfvcrhgm.sh $SLURM_ARRAY_TASK_ID&
+pid2=$!  # Store the process ID of the second process
 
 wait $pid1
-# wait $pid2
+wait $pid2
 
 sleep 10s

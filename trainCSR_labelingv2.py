@@ -34,19 +34,17 @@ def get_num_classes(atlas):
 
 def save_mesh_with_annotations(mesh, labels, save_path, color_map, data_name='hcp'):
     
-    verts, faces = process_surface_inverse(mesh.verts_packed().cpu().numpy(), mesh.faces_packed().cpu().numpy(), data_name)
-    
-    print('verts.shape',verts.shape)
-    print('faces.shape',faces.shape)
-    print('labels.shape',labels.shape)
-    
+    verts, faces = process_surface_inverse(mesh.verts_packed().squeeze().cpu().numpy(), mesh.faces_packed().squeeze().cpu().numpy(), data_name)
+    assert verts.shape[0] != 1 
+    assert faces.shape[0] != 1 
     invalid_mask = (labels < 0) | (labels >= color_map.size(1))
+    
     if invalid_mask.any():
         print(f"Invalid labels found: {labels[invalid_mask]}")
         labels[invalid_mask] = 0  # Assign a default valid label
 
-    labels = labels.long().cpu().numpy()
-
+    labels = labels.squeeze().long().cpu().numpy()
+    assert labels.shape[0] != 1
     vertex_colors = color_map[0, labels, :].cpu().numpy()
     vertex_colors = vertex_colors.squeeze()
 
@@ -102,7 +100,10 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
             mesh = Meshes(verts=v_gt, faces=f_gt)
             save_path = os.path.join(result_dir, f"annotated_mesh_gtpred_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
             save_mesh_with_annotations(mesh, preds, save_path, color_map)
-            print(f"Saved annotated mesh for subject {subid[0]} to {save_path}")
+            print(f"Saved predicted annotated mesh for subject {subid[0]} to {save_path}")
+            save_path = os.path.join(result_dir, f"annotated_mesh_gtfs_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+            save_mesh_with_annotations(mesh, labels, save_path, color_map)
+            print(f"Saved freesurfer gt annotated mesh for subject {subid[0]} to {save_path}")
     else:
         for idx, data in enumerate(dataloader):
             volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
@@ -124,8 +125,8 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
             print(f"Saved annotated input mesh for subject {subid[0]} to {save_path_in}")
 
             mesh_gt = Meshes(verts=v_gt.to(device), faces=f_gt.to(device))
-            save_path_gt = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
-            save_mesh_with_annotations(mesh_gt, preds, save_path_gt, color_map)
+            save_path_gt = os.path.join(result_dir, f"annotated_mesh_gtfs_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+            save_mesh_with_annotations(mesh_gt, labels, save_path_gt, color_map)
             print(f"Saved annotated ground truth mesh for subject {subid[0]} to {save_path_gt}")
 
 def train_surfvc(config):
@@ -210,52 +211,52 @@ def train_surfvc(config):
 
     logging.info("load dataset ...")
     trainset = CSRVertexLabeledDatasetV3(config, 'train')
-    validset = CSRVertexLabeledDataset(config, 'train')
-    newvalidset = CSRVertexLabeledDatasetV3(config, 'train')
+    validset = CSRVertexLabeledDataset(config, 'valid')
+    newtestset = CSRVertexLabeledDatasetV3(config, 'test')
 
-    trainloader = DataLoader(trainset, batch_size=1, shuffle=True)#, num_workers=4)
-    validloader = DataLoader(validset, batch_size=1, shuffle=False)#, num_workers=4)
-    newvalidloader = DataLoader(newvalidset, batch_size=1, shuffle=False)#, num_workers=4)
+    trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=4)
+    validloader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
+    newtestloader = DataLoader(newtestset, batch_size=1, shuffle=False, num_workers=4)
     
     logging.info("start training ...")
     for epoch in tqdm(range(start_epoch, n_epochs + 1)):
         avg_loss = []
         subs = 0
-        # for idx, data in enumerate(trainloader):
-        #     volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
+        for idx, data in enumerate(trainloader):
+            volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
 
-        #     optimizer.zero_grad()
+            optimizer.zero_grad()
 
-        #     volume_in = volume_in.to(device).float()
-        #     v_in = v_in.to(device)
-        #     f_in = f_in.to(device)
-        #     nearest_labels = nearest_labels.to(device)
-        #     mask = mask.to(device)
-        #     csrvcnet.set_data(v_in, volume_in, f=f_in)
-        #     logits = csrvcnet(v_in)
-        #     logits = logits.permute(0, 2, 1)
-        #     if torch.any(nearest_labels < 0) or torch.any(nearest_labels >= num_classes):
-        #         print(f"Invalid label detected in batch {idx} of epoch {epoch}")
-        #         print(f"Nearest labels range: {nearest_labels.min()} to {nearest_labels.max()}")
-        #         continue
-        #     print('logits.shape', logits.shape)
-        #     print('nearest_labels.shape', nearest_labels.shape)
-        #     print('mask.shape', mask.shape)
+            volume_in = volume_in.to(device).float()
+            v_in = v_in.to(device)
+            f_in = f_in.to(device)
+            nearest_labels = nearest_labels.to(device)
+            mask = mask.to(device)
+            csrvcnet.set_data(v_in, volume_in, f=f_in)
+            logits = csrvcnet(v_in)
+            logits = logits.permute(0, 2, 1)
+            if torch.any(nearest_labels < 0) or torch.any(nearest_labels >= num_classes):
+                print(f"Invalid label detected in batch {idx} of epoch {epoch}")
+                print(f"Nearest labels range: {nearest_labels.min()} to {nearest_labels.max()}")
+                continue
+            # print('logits.shape', logits.shape)
+            # print('nearest_labels.shape', nearest_labels.shape)
+            # print('mask.shape', mask.shape)
 
-        #     masked_logits = logits[:, :, mask.squeeze(0).bool()]
-        #     masked_labels = nearest_labels[:,mask.squeeze(0).bool()]
+            masked_logits = logits[:, :, mask.squeeze(0).bool()]
+            masked_labels = nearest_labels[:,mask.squeeze(0).bool()]
 
-        #     # Check shapes for debugging
-        #     print('masked_logits.shape:', masked_logits.shape)  # Expected shape: [M, 36] where M is the number of vertices after masking
-        #     print('masked_labels.shape:', masked_labels.shape)  # Expected shape: [M]
+            # Check shapes for debugging
+            # print('masked_logits.shape:', masked_logits.shape)  # Expected shape: [M, 36] where M is the number of vertices after masking
+            # print('masked_labels.shape:', masked_labels.shape)  # Expected shape: [M]
 
-        #     loss = nn.CrossEntropyLoss()(masked_logits, masked_labels)
+            loss = nn.CrossEntropyLoss()(masked_logits, masked_labels)
             
-        #     avg_loss.append(loss.item())
-        #     loss.backward()
-        #     optimizer.step()
+            avg_loss.append(loss.item())
+            loss.backward()
+            optimizer.step()
 
-        # logging.info('epoch:{}, loss:{}'.format(epoch, np.mean(avg_loss)))
+        logging.info('epoch:{}, loss:{}'.format(epoch, np.mean(avg_loss)))
         
         print('starting validation')
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
@@ -267,7 +268,7 @@ def train_surfvc(config):
 
                 for idx, data in enumerate(validloader):
                     volume_in, v_gt, f_gt, labels, subid, color_map = data
-                    print("types",type(volume_in),type(v_gt),type(f_gt),type(labels),type(subid),type(color_map))
+                    # print("types",type(volume_in),type(v_gt),type(f_gt),type(labels),type(subid),type(color_map))
                     volume_in = volume_in.to(device).float()
                     v_gt = v_gt.to(device)
                     f_gt = f_gt.to(device)
@@ -342,7 +343,7 @@ def train_surfvc(config):
 
                 if visualize:
                     visualize_and_save_mesh(csrvcnet, validloader, config.result_dir, device, config, epoch)
-                    # visualize_and_save_mesh(csrvcnet, newvalidloader, config.result_dir, device, config, epoch, new_format=True)
+                    visualize_and_save_mesh(csrvcnet, newtestloader, config.result_dir, device, config, epoch, new_format=True)
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             if config.gnn == 'gat':
                 model_filename = f"model_vertex_classification_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_gnn{config.gnn}_layers{config.gnn_layers}_heads{config.gat_heads}_{epoch}epochs.pt"
