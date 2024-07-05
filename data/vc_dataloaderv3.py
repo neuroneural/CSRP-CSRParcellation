@@ -68,8 +68,6 @@ class CSRVertexLabeledDatasetV3(Dataset):
         print(np.min(v_gt),np.min(v_in))
         # v_in_np = v_in.squeeze().cpu().numpy()
         # v_gt_np = v_gt.squeeze().cpu().numpy()
-        chamfer_dist = chamfer_distance(v_in, v_gt)
-        print(f"DATALOADER: Chamfer distance for debugging purposes for subject {subid[0]}: {chamfer_dist}")
             
         assert v_in is not None, "v_in is None"
         assert f_in is not None, "f_in is None"

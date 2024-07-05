@@ -120,12 +120,6 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
         for idx, data in enumerate(dataloader):
             volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
             
-            # Calculate and print the chamfer distance between v_in and v_gt using cKDTree
-            v_in_np = v_in.squeeze().cpu().numpy()
-            v_gt_np = v_gt.squeeze().cpu().numpy()
-            chamfer_dist = chamfer_distance(v_in_np, v_gt_np)
-            print(f"Chamfer distance for debugging purposes for subject {subid[0]}: {chamfer_dist}")
-            
             volume_in = volume_in.to(device).float()
             v_in = v_in.to(device)
             f_in = f_in.to(device)

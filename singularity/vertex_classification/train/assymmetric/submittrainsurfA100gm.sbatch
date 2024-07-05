@@ -1,17 +1,18 @@
 #!/bin/bash
 #SBATCH -n 1
-#SBATCH -c 8
-#SBATCH --mem=55g
-#SBATCH -p qTRDGPU
-#SBATCH --gres=gpu:A40:1
+#SBATCH -c 16
+#SBATCH --mem=110g
+#SBATCH -p qTRDGPUH
+#SBATCH --gres=gpu:A100:1
 #SBATCH -t 5-00:00
-#SBATCH -J vca
+#SBATCH -J vcLGa
 #SBATCH -e jobs/error%A_%a.err
 #SBATCH -o jobs/out%A_%a.out
 #SBATCH -A psy53c17
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=washbee1@student.gsu.edu
 #SBATCH --oversubscribe
+#SBATCH --exclude=arctrddgxa001
 
 sleep 5s
 

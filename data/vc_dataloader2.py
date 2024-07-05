@@ -6,6 +6,7 @@ import numpy as np
 import nibabel as nib
 from data.preprocess import process_volume, process_surface
 import matplotlib.pyplot as plt
+import re
 
 class VertexData:
     def __init__(self, brain_arr, v, f, labels, subid, color_map):
@@ -26,7 +27,7 @@ class CSRVertexLabeledDataset(Dataset):
         self.config = config
         self.data_usage = data_usage
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted([item for item in os.listdir(self.data_dir) if os.path.isdir(os.path.join(self.data_dir, item))])
+        self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
 
     def __len__(self):
         return len(self.subject_list)

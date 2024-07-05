@@ -6,7 +6,7 @@ cd /cortexode
 # Parameters setup
 declare -a versions=("1")
 declare -a gnns=("gat")  # Assuming "gcn" might not be included
-declare -a gnn_layers=(2 3 4)
+declare -a gnn_layers=(2 4 6 8 10 12)
 declare -a gat_heads=(1)
 
 
@@ -66,4 +66,4 @@ echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, 
 
 #python train.py  --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_1/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_1/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='gm' --n_epochs=100 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
 #python train.py --model_file 'model_gm_adni_rh_csrf_v1_gnngat_layers5_sf0.1_heads1_29epochs.pt' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surf' --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/exp_csrf_gnn_7/model/' --init_dir='/cortexode/ckpts/exp_csrf_gnn_7/init/' --data_name='adni'  --surf_hemi='rh' --surf_type='gm' --n_epochs=60 --start_epoch=31 --n_samples=150000 --tag='csrf' --solver='rk4' --step_size=0.1 --device='gpu' 
-python train_CSRVertex_labeling.py --data_dir='/speedrun/wacv-data-dev/' --model_dir='/cortexode/ckpts/hcp_vc_assym_gnn_1/model/' --result_dir='/cortexode/ckpts/hcp_vc_assym_gnn_1/result/' --model_type 'csrvc' --patience 'standard' --visualize 'yes' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surfvc' --data_name='hcp'  --surf_hemi='rh' --surf_type='gm' --n_epochs=401 --start_epoch=1 --n_samples=150000 --tag='vc' --device='gpu' 
+python train_CSRVertex_labeling.py --data_dir='/speedrun/cortexode-data-rp/' --model_dir='/cortexode/ckpts/hcp_vc_sym_gnn_0/model/' --result_dir='/cortexode/ckpts/hcp_vc_sym_gnn_0/result/' --model_type 'csrvc' --patience 'standard' --visualize 'yes' --version $version --gnn $gnn --gnn_layers $gnn_layer --gat_heads $gat_head --train_type='surfvc' --data_name='hcp'  --surf_hemi='rh' --surf_type='gm' --n_epochs=401 --start_epoch=1 --n_samples=150000 --tag='vc' --device='gpu' 
