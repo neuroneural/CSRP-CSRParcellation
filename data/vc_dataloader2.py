@@ -107,25 +107,17 @@ class CSRVertexLabeledDataset(Dataset):
     
 
     def _load_vertex_labels(self, atlas_dir, surf_hemi, atlas):
-        annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
-        labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
-
-        # Print shapes
-        # print(f"Labels shape: {labels.shape}")
-        # print(f"Colormap shape: {ctab.shape}")
-        # print(f"Names shape: {len(_names)}")
-
-        # Count occurrences of each class in the labels
-        # unique_labels, counts = np.unique(labels, return_counts=True)
-        # for label, count in zip(unique_labels, counts):
-        #     print(f"Class {label}: {count} occurrences")
-
-        # Remap -1 labels to 4 (corpuscallosum)
-        if self.config.atlas=='aparc':
-            labels[labels == -1] = 4
+        if self.config.atlas == 'aparc':
+            annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
+        elif self.config.atlas == 'DKTatlas40':
+            annot_file = os.path.join(atlas_dir, f'{surf_hemi}.aparc.{atlas}.annot')
         else:
             assert False, "label mapping not supported yet"
-        # Convert ctab to RGB format, excluding the -1 label color if necessary
+        labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
+        if self.config.atlas == 'aparc' or self.config.atlas == 'DKTatlas40':
+            labels[labels == -1] = 4 #non cortex, see ctab file
+        else:
+            assert False, "label mapping not supported yet"# Convert ctab to RGB format, excluding the -1 label color if necessary
         color_map = ctab[:, :3]
         
         # Ensure there are enough colors for the classes excluding -1

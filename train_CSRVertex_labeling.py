@@ -19,37 +19,43 @@ from pytorch3d.structures import Meshes
 from pytorch3d.io import save_obj
 from config import load_config
 from plyfile import PlyData, PlyElement
+from data.preprocess import process_surface_inverse
+from scipy.spatial import cKDTree
 
+def chamfer_distance(v1, v2):
+    
+    kdtree1 = cKDTree(v1)
+    kdtree2 = cKDTree(v2)
+
+    distances1, _ = kdtree1.query(v2)
+    distances2, _ = kdtree2.query(v1)
+
+    return np.mean(distances1) + np.mean(distances2)
 
 def get_num_classes(atlas):
-    """
-    Get the number of classes for the specified atlas.
-    Args:
-        atlas (str): The name of the atlas.
-    Returns:
-        int: The number of classes for the atlas.
-    """
     atlas_num_classes = {
         'aparc': 36,            # 34 regions + 1 for unknown +1 for corpus callosum mapped to 4 from -1
-        'aparc.a2009s': 83,     # 82 regions + 1 for unknown
-        'aparc.DKTatlas40': 41, # 40 regions + 1 for unknown
+        'a2009s': 83,     # 82 regions + 1 for unknown
+        'DKTatlas40': 36, # 40 regions + 1 for unknown
         'BA': 53,               # 52 regions + 1 for unknown
         # Add more atlases as needed
     }
-    return atlas_num_classes.get(atlas, 0)  # Default to 0 if atlas not found
+    return atlas_num_classes.get(atlas, 0)
 
-def save_mesh_with_annotations(mesh, labels, save_path, color_map):
-    verts = mesh.verts_packed().cpu().numpy()
-    faces = mesh.faces_packed().cpu().numpy()
+def save_mesh_with_annotations(mesh, labels, save_path, color_map, data_name='hcp'):
     
+    verts, faces = process_surface_inverse(mesh.verts_packed().squeeze().cpu().numpy(), mesh.faces_packed().squeeze().cpu().numpy(), data_name)
+    assert verts.shape[0] != 1 
+    assert faces.shape[0] != 1 
     invalid_mask = (labels < 0) | (labels >= color_map.size(1))
+    
     if invalid_mask.any():
         print(f"Invalid labels found: {labels[invalid_mask]}")
         labels[invalid_mask] = 0  # Assign a default valid label
 
-    labels = labels.long().cpu().numpy()
-
-    vertex_colors = color_map[0, labels, :].cpu().numpy()  # Index color_map with labels
+    labels = labels.squeeze().long().cpu().numpy()
+    assert labels.shape[0] != 1
+    vertex_colors = color_map[0, labels, :].cpu().numpy()
     vertex_colors = vertex_colors.squeeze()
 
     vertices = np.array([(*verts[i], *vertex_colors[i]) for i in range(len(verts))],
@@ -62,19 +68,9 @@ def save_mesh_with_annotations(mesh, labels, save_path, color_map):
     vertex_element = PlyElement.describe(vertices, 'vertex')
     face_element = PlyElement.describe(faces, 'face')
 
-    PlyData([vertex_element, face_element], text=True).write(save_path)
+    PlyData([vertex_element, face_element], text=True).write(save_path)#replace with freeview compatible stl file and annotation file.
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
-    """
-    Compute Dice score.
-    Args:
-        pred (Tensor): Predicted labels.
-        target (Tensor): Ground truth labels.
-        num_classes (int): Number of classes.
-        exclude_classes (list): List of classes to exclude from Dice score calculation.
-    Returns:
-        float: Dice score.
-    """
     dice_scores = []
     pred = pred.cpu().numpy()
     target = target.cpu().numpy()
@@ -97,21 +93,26 @@ def compute_dice(pred, target, num_classes, exclude_classes=[]):
         
     return np.mean(dice_scores)
 
-def visualize_and_save_mesh(csrvcnet, validloader, result_dir, device, config, epoch):
-    for idx, data in enumerate(validloader):
-        volume_in, v_in, f_in, labels, subid, color_map = data
+def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, epoch):
+    for idx, data in enumerate(dataloader):
+        volume_in, v_gt, f_gt, labels, subid, color_map = data
+        
         volume_in = volume_in.to(device).float()
-        v_in = v_in.to(device)
-        f_in = f_in.to(device)
+        v_gt = v_gt.to(device)
+        f_gt = f_gt.to(device)
         labels = labels.to(device)
-        csrvcnet.set_data(v_in, volume_in, f=f_in)
-        logits = csrvcnet(v_in)
-        preds = torch.argmax(logits, dim=2)  # Ensure correct dimension for argmax
-        preds = preds.squeeze(0)  # Remove the batch dimension if present
-        mesh = Meshes(verts=v_in, faces=f_in)
-        save_path = os.path.join(result_dir, f"annotated_mesh_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+        
+        csrvcnet.set_data(v_gt, volume_in, f=f_gt)
+        logits = csrvcnet(v_gt)
+        preds = torch.argmax(logits, dim=2)
+        preds = preds.squeeze(0)
+        mesh = Meshes(verts=v_gt, faces=f_gt)
+        save_path = os.path.join(result_dir, f"annotated_mesh_gtpred_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
         save_mesh_with_annotations(mesh, preds, save_path, color_map)
-        print(f"Saved annotated mesh for subject {subid[0]} to {save_path}")
+        print(f"Saved predicted annotated mesh for subject {subid[0]} to {save_path}")
+        save_path = os.path.join(result_dir, f"annotated_mesh_gtfs_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+        save_mesh_with_annotations(mesh, labels, save_path, color_map)
+        print(f"Saved freesurfer gt annotated mesh for subject {subid[0]} to {save_path}") 
 
 def train_surfvc(config):
     """
@@ -259,7 +260,7 @@ def train_surfvc(config):
             with torch.no_grad():
                 valid_error = []
                 valid_dice_scores = []  # List to store dice scores
-                exclude_classes = [4] if config.atlas == 'aparc' else [] #exclude non cortex, but include medial wall
+                exclude_classes = [4] if config.atlas == 'aparc'or config.atlas == 'DKTatlas40' else [] #exclude non cortex, but include medial wall
 
                 for idx, data in enumerate(validloader):
                     volume_in, v_in, f_in, labels, subid, color_map = data  # Ensure this matches your data loader output

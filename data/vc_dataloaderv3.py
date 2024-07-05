@@ -137,10 +137,15 @@ class CSRVertexLabeledDatasetV3(Dataset):
 
     def _load_vertex_labels(self, atlas_dir, surf_hemi, atlas):
         try:
-            annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
-            labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
             if self.config.atlas == 'aparc':
-                labels[labels == -1] = 4
+                annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
+            elif self.config.atlas == 'DKTatlas40':
+                annot_file = os.path.join(atlas_dir, f'{surf_hemi}.aparc.{atlas}.annot')
+            else:
+                assert False, "label mapping not supported yet"
+            labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
+            if self.config.atlas == 'aparc' or self.config.atlas == 'DKTatlas40':
+                labels[labels == -1] = 4 #non cortex, see ctab file
             else:
                 assert False, "label mapping not supported yet"
             color_map = ctab[:, :3]

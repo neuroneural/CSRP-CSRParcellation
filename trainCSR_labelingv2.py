@@ -36,10 +36,10 @@ def chamfer_distance(v1, v2):
 
 def get_num_classes(atlas):
     atlas_num_classes = {
-        'aparc': 36,
-        'aparc.a2009s': 83,
-        'aparc.DKTatlas40': 41,
-        'BA': 53,
+        'aparc': 36,            # 34 regions + 1 for unknown +1 for corpus callosum mapped to 4 from -1
+        'a2009s': 83,     # 82 regions + 1 for unknown
+        'DKTatlas40': 36, # 40 regions + 1 for unknown
+        'BA': 53,               # 52 regions + 1 for unknown
         # Add more atlases as needed
     }
     return atlas_num_classes.get(atlas, 0)
@@ -282,8 +282,8 @@ def train_surfvc(config):
             with torch.no_grad():
                 valid_error = []
                 valid_dice_scores = []
-                exclude_classes = [4] if config.atlas == 'aparc' else []
-
+                exclude_classes = [4] if config.atlas == 'aparc'or config.atlas == 'DKTatlas40' else []
+                
                 for idx, data in enumerate(validloader):
                     volume_in, v_gt, f_gt, labels, subid, color_map = data
                     # print("types",type(volume_in),type(v_gt),type(f_gt),type(labels),type(subid),type(color_map))
