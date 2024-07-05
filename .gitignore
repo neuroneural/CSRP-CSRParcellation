@@ -12,4 +12,8 @@ v2cc/
 groupparcellation/
 *.pt
 results/
-
+result/
+model/
+archive/
+traincorrespondence.py
+train_gaussian_selfsupervised.py

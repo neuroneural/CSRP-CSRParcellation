@@ -62,13 +62,6 @@ class CSRVertexLabeledDatasetV3(Dataset):
         brain_arr, v_gt, f_gt, labels, color_map = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
         v_in, f_in = self._load_input_mesh(subid)
         
-        print('DATALOADER MAX MIN')
-        print('v_gt  v_in')
-        print(np.max(v_gt),np.max(v_in))
-        print(np.min(v_gt),np.min(v_in))
-        # v_in_np = v_in.squeeze().cpu().numpy()
-        # v_gt_np = v_gt.squeeze().cpu().numpy()
-            
         assert v_in is not None, "v_in is None"
         assert f_in is not None, "f_in is None"
         

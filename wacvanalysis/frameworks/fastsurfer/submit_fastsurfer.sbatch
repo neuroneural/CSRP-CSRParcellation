@@ -16,7 +16,7 @@ source /data/users2/washbee/anaconda3latest/bin/activate wacvanalysis
 
 # File containing the list of subject IDs
 #SUBJ_FILE="test_subs.txt"
-SUBJ_FILE="remaining.txt"
+SUBJ_FILE="../test_subs.txt"
 # Get the subject ID for this task
 subj_id=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $SUBJ_FILE)
 
@@ -27,4 +27,4 @@ gt_subject_base_path="/data/users2/washbee/speedrun/cortexode-data-rp/test"
 fs_subject_base_path="/data/users2/washbee/fastsurfer-output/test"
 
 # Run the Python script
-python analyze_subject.py $subj_id $csv_file_path $framework_name $gt_subject_base_path $fs_subject_base_path
+python ../../analyze_subject.py $subj_id $csv_file_path $framework_name $gt_subject_base_path $fs_subject_base_path
