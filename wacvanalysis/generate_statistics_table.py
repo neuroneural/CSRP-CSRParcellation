@@ -5,7 +5,7 @@ import seaborn as sns
 from matplotlib.gridspec import GridSpec
 
 # Read the data
-file_path = 'cleaned_fastsurfer_measures.csv'
+file_path = './frameworks/fastsurfer/cleaned_fastsurfer_measures.csv'
 data = pd.read_csv(file_path)
 
 # Separate the data into left and right hemispheres
