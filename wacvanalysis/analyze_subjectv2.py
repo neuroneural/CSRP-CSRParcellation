@@ -152,7 +152,7 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, gt_subject_bas
     fastsurfer_subject_path = os.path.join(fastsurfer_subject_base_path, subj_id, subj_id)
 
     hemispheres = ['lh', 'rh']
-
+    
     for hemi in hemispheres:
         try:
             fs_pial, fs_labels = load_freesurfer_surface_and_labels(
