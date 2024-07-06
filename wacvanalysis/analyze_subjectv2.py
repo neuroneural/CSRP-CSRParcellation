@@ -142,7 +142,7 @@ def write_to_csv(file_path, lock, data):
         with open(file_path, mode='a', newline='') as file:
             writer = csv.writer(file)
             if not file_exists:
-                writer.writerow(['Framework', 'Subject ID', 'Hemisphere', 'Metric', 'Label', 'Score', 'Total Triangles'])
+                writer.writerow(['Framework', 'Subject ID','surf_type','Hemisphere', 'Metric', 'Label', 'Score', 'Total Triangles'])
             writer.writerow(data)
 
 # Process a subject and compute metrics
@@ -152,61 +152,65 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, gt_subject_bas
     fastsurfer_subject_path = os.path.join(fastsurfer_subject_base_path, subj_id, subj_id)
 
     hemispheres = ['lh', 'rh']
-    
-    for hemi in hemispheres:
-        try:
-            fs_pial, fs_labels = load_freesurfer_surface_and_labels(
-                os.path.join(freesurfer_subject_path, 'surf', f'{hemi}.pial'),
-                os.path.join(freesurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas40.annot'),
-                output_dir, hemi, 'pial','freesurfer',subj_id
-            )
-        except ValueError as e:
-            print(f"Error loading FreeSurfer {hemi} hemisphere: {e}")
-            continue
+    for surf_type in ['pial','white']:
+        for hemi in hemispheres:
+            try:
+                fs_surf, fs_labels = load_freesurfer_surface_and_labels(
+                    os.path.join(freesurfer_subject_path, 'surf', f'{hemi}.{surf_type}'),
+                    os.path.join(freesurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas40.annot'),
+                    output_dir, hemi, f'{surf_type}','freesurfer',subj_id
+                )
+            except ValueError as e:
+                print(f"Error loading FreeSurfer {hemi} hemisphere: {e}")
+                continue
 
-        try:
-            fast_pial, fast_labels = load_freesurfer_surface_and_labels(
-                os.path.join(fastsurfer_subject_path, 'surf', f'{hemi}.pial'),
-                os.path.join(fastsurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas.mapped.annot'),
-                output_dir, hemi, 'pial','fastsurfer',subj_id
-            )
-        except ValueError as e:
-            print(f"Error loading FastSurfer {hemi} hemisphere: {e}")
-            continue
+            try:
+                fast_surf, fast_labels = load_freesurfer_surface_and_labels(
+                    os.path.join(fastsurfer_subject_path, 'surf', f'{hemi}.{surf_type}'),
+                    os.path.join(fastsurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas.mapped.annot'),
+                    output_dir, hemi, f'{surf_type}','fastsurfer',subj_id
+                )
+            except ValueError as e:
+                print(f"Error loading FastSurfer {hemi} hemisphere: {e}")
+                continue
 
-        # Compute Chamfer and Hausdorff distances for pial surfaces
-        chamfer_dist = compute_chamfer_distance(fs_pial, fast_pial)
-        hausdorff_dist = compute_hausdorff_distance(fs_pial, fast_pial)
-        
-        
-        
-        # Compute Dice scores with mapping
-        try:
-            dice_scores = calculate_dice_score_with_mapping(fs_labels, fast_labels, fs_pial.vertices, fast_pial.vertices)
-        except ValueError as e:
-            print(f"Error calculating left hemisphere Dice scores: {e}")
-            return
-        
-        # Calculate macro Dice score excluding labels -1 and 4
-        filtered_scores = {label: score for label, score in dice_scores.items() if label not in [-1, 4]}
-        if filtered_scores:
-            macro_dice_score = np.mean(list(filtered_scores.values()))
-        else:
-            macro_dice_score = 0.0
+            # Compute Chamfer and Hausdorff distances for {surf_type} surfaces
+            chamfer_dist = compute_chamfer_distance(fs_surf, fast_surf)
+            hausdorff_dist = compute_hausdorff_distance(fs_surf, fast_surf)
+            
+            # Compute Dice scores with mapping
+            if framework_name.lower() in ['fastsurfer','csrf'] and surf_type == 'pial':
+                try:
+                    dice_scores = calculate_dice_score_with_mapping(fs_labels, fast_labels, fs_surf.vertices, fast_surf.vertices)
+                except ValueError as e:
+                    print(f"Error calculating left hemisphere Dice scores: {e}")
+                    return
+            
+                # Calculate macro Dice score excluding labels -1 and 4
+                filtered_scores = {label: score for label, score in dice_scores.items() if label not in [-1, 4]}
+                if filtered_scores:
+                    macro_dice_score = np.mean(list(filtered_scores.values()))
+                else:
+                    macro_dice_score = 0.0
+            else:
+                dice_scores = ''
+                macro_dice_score = ''
+            
+            # Compute self-intersections 
+            total_triangles = len(fast_surf.faces)
+            assert total_triangles > 10000, f"{total_triangles}"
+            
+            self_collision_count = count_self_collisions(fast_surf, k=30)
+            # Write results to CSV
+            if framework_name.lower() in ['fastsurfer','csrf'] and surf_type == 'pial':
+                for label, score in dice_scores.items():
+                    write_to_csv(csv_file_path, lock, [framework_name, subj_id, surf_type, hemi, 'Dice', label, score, ''])
 
-        # Compute self-intersections 
-        total_triangles = len(fast_pial.faces)
-        assert total_triangles > 10000, f"{total_triangles}"
-        
-        self_collision_count = count_self_collisions(fast_pial, k=30)
-        # Write results to CSV
-        for label, score in dice_scores.items():
-            write_to_csv(csv_file_path, lock, [framework_name, subj_id, hemi, 'Dice', label, score, ''])
-
-        write_to_csv(csv_file_path, lock, [framework_name, subj_id, hemi, 'Macro Dice', '', macro_dice_score, ''])
-        write_to_csv(csv_file_path, lock, [framework_name, subj_id, hemi, 'Chamfer Distance', '', chamfer_dist, ''])
-        write_to_csv(csv_file_path, lock, [framework_name, subj_id, hemi, 'Hausdorff Distance', '', hausdorff_dist, ''])
-        write_to_csv(csv_file_path, lock, [framework_name, subj_id, hemi, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles])
+                write_to_csv(csv_file_path, lock, [framework_name, subj_id, surf_type, hemi, 'Macro Dice', '', macro_dice_score, ''])
+            
+            write_to_csv(csv_file_path, lock, [framework_name, subj_id, surf_type, hemi, 'Chamfer Distance', '', chamfer_dist, ''])
+            write_to_csv(csv_file_path, lock, [framework_name, subj_id, surf_type, hemi, 'Hausdorff Distance', '', hausdorff_dist, ''])
+            write_to_csv(csv_file_path, lock, [framework_name, subj_id, surf_type, hemi, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles])
 
 if __name__ == "__main__":
     if len(sys.argv) < 6:
@@ -227,7 +231,6 @@ if __name__ == "__main__":
     
     process_subject(subj_id, csv_file_path, lock, framework_name, gt_subject_base_path, fs_subject_base_path,output_dir)
 
-
 # if __name__ == "__main__":
 #     framework_name = 'fastsurfer'
 #     subj_id = "201818"
@@ -235,7 +238,6 @@ if __name__ == "__main__":
 #     gt_subject_base_path = '/data/users2/washbee/speedrun/cortexode-data-rp/test/'
 #     fast_subject_base_path = '/data/users2/washbee/fastsurfer-output/test/'
 #     output_dir = './archive/'
-
 #     # Initialize a lock for parallel-safe writing
 #     lock = Lock()
 #     process_subject(subj_id, csv_file_path, lock, framework_name, gt_subject_base_path, fast_subject_base_path, output_dir)
