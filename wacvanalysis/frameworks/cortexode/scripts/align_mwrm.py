@@ -12,8 +12,11 @@ current_dir = os.getcwd()
 # Assuming `remove_medial_wall.py` is located in '../../scripts/'
 rmw_path = os.path.abspath(os.path.join(current_dir, '../../scripts/'))
 sys.path.append(rmw_path)
-from remove_medial_wall import alignCentersAndGetMatrix, scaleToMatchBoundingBox#, createMedialWallPly
+from remove_medial_wall import save_mesh, scaleToMatchBoundingBox, alignCentersAndGetMatrix
+
+# Import the private method using getattr
 import remove_medial_wall
+_alignMeshesAndGetMatrix = getattr(remove_medial_wall, '_alignMeshesAndGetMatrix')
 
 def apply_affine(vertices, affine):
     """Apply affine transformation to vertices."""
@@ -56,9 +59,13 @@ os.makedirs(output_folder, exist_ok=True)
 
 proj_gt_path = os.path.join(subjects_dir, subject_id, 'surf', f'{hemi}.{surfType}.deformed')
 fs_gt_path = os.path.join(subjects_dir, subject_id, 'surf', f'{hemi}.{surfType}')
+print('a')
 
 source_mesh = nib.freesurfer.io.read_geometry(proj_gt_path)  # Project's transformed ground truth
-target_mesh = pv.read(fs_gt_path)  # Freesurfer
+target_mesh = nib.freesurfer.io.read_geometry(fs_gt_path)
+target_vertices, target_faces = target_mesh
+target_mesh = pv.PolyData(target_vertices, target_faces)
+print('b')
 
 rotation_matrix = np.array([
         [1,  0,  0,  0],
@@ -66,16 +73,21 @@ rotation_matrix = np.array([
         [0,  1,  0,  0],
         [0,  0,  0,  1]
     ])
-
+print('c')
 # Apply the rotation
-source_vertices, source_faces, source_affine = source_mesh
+source_vertices, source_faces = source_mesh
 rotated_source_vertices = apply_affine(source_vertices, rotation_matrix)
 rotated_source_mesh = pv.PolyData(rotated_source_vertices, source_faces)
 
+print('d')
 centered_source, centering_matrix = alignCentersAndGetMatrix(target_mesh, rotated_source_mesh)
+print('d2')
 scaled_source, scaling_matrix = scaleToMatchBoundingBox(centered_source, target_mesh)
-aligned_source, icp_matrix = remove_medial_wall.alignMeshesAndGetMatrix(target_mesh, scaled_source, rigid=True)
+print('d3')
+aligned_source, icp_matrix = _alignMeshesAndGetMatrix(target_mesh, scaled_source, rigid=True)#if i add this line in get the segmentation fault.
 
+print('e')
+exit()#for debugging quickly. 
 # Combine all transformations into one matrix
 combined_transformation_matrix = icp_matrix @ scaling_matrix @ centering_matrix @ rotation_matrix
 
