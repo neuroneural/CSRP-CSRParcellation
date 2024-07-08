@@ -131,23 +131,22 @@ transformed_pred_mesh = trimesh.Trimesh(vertices=transformed_pred_vertices, face
 # Save transformed predicted mesh
 save_freesurfer_mesh(transformed_pred_mesh.vertices, transformed_pred_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_CA_{hemi}_{surfType}"))
 
-# Load the medial wall ply file
-mw_file_path = os.path.join('/data/users2/washbee/CortexODE-CSRFusionNet/wacvanalysis/frameworks/freesurfer/mwremoved',
-                            f'{subject_id}.{hemi}.{surfType}.medial_wall.ply')
+# Load the medial wall vertices from the pickle file
+mw_pkl_path = os.path.join('/data/users2/washbee/CortexODE-CSRFusionNet/wacvanalysis/frameworks/freesurfer/mwremoved',
+                            f'{subject_id}.{hemi}.{surfType}.medial_wall.pkl')
 
-medial_wall = trimesh.load(mw_file_path)
+with open(mw_pkl_path, 'rb') as mw_file:
+    medial_wall_vertices = pickle.load(mw_file)
 
-# Check if medial_wall is a PointCloud
-if isinstance(medial_wall, trimesh.points.PointCloud):
-    medial_wall = trimesh.Trimesh(vertices=medial_wall.vertices, faces=[[0, 0, 0]])
-
-# Transform medial wall using the inverse of combined transformation_matrix
+# Transform medial wall vertices using the inverse of combined transformation_matrix
 inverse_transformation_matrix = np.linalg.inv(combined_transformation_matrix)
-transformed_mw_vertices = apply_affine(medial_wall.vertices, inverse_transformation_matrix)
-transformed_medial_wall = trimesh.Trimesh(vertices=transformed_mw_vertices, faces=medial_wall.faces)
+transformed_mw_vertices = apply_affine(medial_wall_vertices, inverse_transformation_matrix)
 
-# Save transformed medial wall mesh
-save_freesurfer_mesh(transformed_medial_wall.vertices, transformed_medial_wall.faces, os.path.join(output_folder, f"{project}_{subject_id}_invmw_{hemi}_{surfType}"))
+print("shape of mw verts", transformed_mw_vertices.shape)
+
+# Save transformed medial wall vertices
+with open(os.path.join(output_folder, f"{project}_{subject_id}_invmw_{hemi}_{surfType}.pkl"), 'wb') as transformed_mw_file:
+    pickle.dump(transformed_mw_vertices, transformed_mw_file)
 
 # Perform minuspatch operation (adjust the function as needed for trimesh)
 def minuspatch_optimized(meshA, patch, K=1):
@@ -171,7 +170,7 @@ def minuspatch_optimized(meshA, patch, K=1):
 
     return clean_mesh
 
-modified_mesh = minuspatch_optimized(pred_mesh, transformed_medial_wall.vertices, K=60)
+modified_mesh = minuspatch_optimized(pred_mesh, transformed_mw_vertices, K=60)
 
 # Save modified mesh
 save_freesurfer_mesh(modified_mesh.vertices, modified_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_C_mwrm_{hemi}_{surfType}"))
