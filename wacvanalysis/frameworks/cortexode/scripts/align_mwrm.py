@@ -1,35 +1,43 @@
-import pyvista as pv
 import os
-import subprocess
 import numpy as np
 import argparse
 import pickle
 import sys
 import nibabel as nib
-# Ensure current_dir is defined appropriately
-current_dir = os.getcwd()
-
-# Assuming `remove_medial_wall.py` is located in '../../scripts/'
-rmw_path = os.path.abspath(os.path.join(current_dir, '../../scripts/'))
-sys.path.append(rmw_path)
-from remove_medial_wall import save_mesh, scaleToMatchBoundingBox, alignCentersAndGetMatrix
-
-# Import the private method using getattr
-import remove_medial_wall
-_alignMeshesAndGetMatrix = getattr(remove_medial_wall, '_alignMeshesAndGetMatrix')
+import trimesh
+from scipy.spatial import cKDTree
 
 def apply_affine(vertices, affine):
     """Apply affine transformation to vertices."""
     return np.dot(vertices, affine[:3, :3].T) + affine[:3, 3]
 
-def save_mesh(mesh, file_path, file_format):
-    """Save PyVista mesh to file."""
-    if file_format == 'stl':
-        mesh.save(file_path, binary=True)
-    elif file_format == 'ply':
-        mesh.save(file_path, binary=True)
-    else:
-        raise ValueError(f"Unsupported file format: {file_format}")
+def save_freesurfer_mesh(vertices, faces, file_path):
+    """Save vertices and faces as a FreeSurfer geometry file."""
+    nib.freesurfer.io.write_geometry(file_path, vertices, faces)
+
+def load_freesurfer_mesh(fs_path):
+    """Load FreeSurfer geometry."""
+    vertices, faces = nib.freesurfer.io.read_geometry(fs_path)
+    return vertices, faces
+
+def icp_alignment(target_vertices, source_vertices, max_iterations=1000):
+    """Perform ICP alignment using trimesh."""
+    matrix, aligned, cost = trimesh.registration.icp(source_vertices, target_vertices, max_iterations=max_iterations)
+    aligned_mesh = trimesh.Trimesh(vertices=aligned, faces=source_faces)
+    return matrix, aligned_mesh
+
+def compute_initial_transformations(target_mesh, source_mesh):
+    """Compute initial transformations: centering and scaling."""
+    target_center = target_mesh.centroid
+    source_center = source_mesh.centroid
+    translation = target_center - source_center
+    translation_matrix = np.eye(4)
+    translation_matrix[:3, 3] = translation
+
+    scale_factors = (target_mesh.bounds[1] - target_mesh.bounds[0]) / (source_mesh.bounds[1] - source_mesh.bounds[0])
+    scaling_matrix = np.diag(np.append(scale_factors, 1))
+
+    return translation_matrix, scaling_matrix
 
 # Setting up argparse to handle command line arguments
 parser = argparse.ArgumentParser(description="Mesh processing script")
@@ -57,83 +65,113 @@ output_folder = args.output_folder
 # Ensure output_folder exists
 os.makedirs(output_folder, exist_ok=True)
 
+# Paths to FreeSurfer geometry files
 proj_gt_path = os.path.join(subjects_dir, subject_id, 'surf', f'{hemi}.{surfType}.deformed')
 fs_gt_path = os.path.join(subjects_dir, subject_id, 'surf', f'{hemi}.{surfType}')
-print('a')
 
-source_mesh = nib.freesurfer.io.read_geometry(proj_gt_path)  # Project's transformed ground truth
-target_mesh = nib.freesurfer.io.read_geometry(fs_gt_path)
-target_vertices, target_faces = target_mesh
-target_mesh = pv.PolyData(target_vertices, target_faces)
-print('b')
+# Load FreeSurfer meshes
+source_vertices, source_faces = load_freesurfer_mesh(proj_gt_path)
+target_vertices, target_faces = load_freesurfer_mesh(fs_gt_path)
 
+# Create trimesh objects
+source_mesh = trimesh.Trimesh(vertices=source_vertices, faces=source_faces)
+target_mesh = trimesh.Trimesh(vertices=target_vertices, faces=target_faces)
+
+# Save the loaded meshes
+save_freesurfer_mesh(source_vertices, source_faces, os.path.join(output_folder, f"{project}_{subject_id}_B_{hemi}_{surfType}"))
+save_freesurfer_mesh(target_vertices, target_faces, os.path.join(output_folder, f"{project}_{subject_id}_A_{hemi}_{surfType}"))
+
+# Apply initial rotation to source mesh
 rotation_matrix = np.array([
-        [1,  0,  0,  0],
-        [0,  0, -1,  0],
-        [0,  1,  0,  0],
-        [0,  0,  0,  1]
-    ])
-print('c')
-# Apply the rotation
-source_vertices, source_faces = source_mesh
-rotated_source_vertices = apply_affine(source_vertices, rotation_matrix)
-rotated_source_mesh = pv.PolyData(rotated_source_vertices, source_faces)
+    [1, 0, 0, 0],
+    [0, 0, -1, 0],
+    [0, 1, 0, 0],
+    [0, 0, 0, 1]
+])
 
-print('d')
-centered_source, centering_matrix = alignCentersAndGetMatrix(target_mesh, rotated_source_mesh)
-print('d2')
-scaled_source, scaling_matrix = scaleToMatchBoundingBox(centered_source, target_mesh)
-print('d3')
-aligned_source, icp_matrix = _alignMeshesAndGetMatrix(target_mesh, scaled_source, rigid=True)#if i add this line in get the segmentation fault.
+rotated_source_vertices = apply_affine(source_mesh.vertices, rotation_matrix)
+rotated_source_mesh = trimesh.Trimesh(vertices=rotated_source_vertices, faces=source_mesh.faces)
 
-print('e')
-exit()#for debugging quickly. 
+# Compute initial transformations: centering and scaling
+centering_matrix, scaling_matrix = compute_initial_transformations(target_mesh, rotated_source_mesh)
+
+# Apply initial transformations
+centered_source_vertices = apply_affine(rotated_source_vertices, centering_matrix)
+centered_source_mesh = trimesh.Trimesh(vertices=centered_source_vertices, faces=rotated_source_mesh.faces)
+
+scaled_source_vertices = apply_affine(centered_source_vertices, scaling_matrix)
+scaled_source_mesh = trimesh.Trimesh(vertices=scaled_source_vertices, faces=centered_source_mesh.faces)
+
+# Perform ICP alignment
+icp_matrix, aligned_source_mesh = icp_alignment(target_mesh.vertices, scaled_source_mesh.vertices)
+
 # Combine all transformations into one matrix
 combined_transformation_matrix = icp_matrix @ scaling_matrix @ centering_matrix @ rotation_matrix
 
-# Save the combined transformation matrix as a pickle file
+# Save the aligned mesh
+save_freesurfer_mesh(aligned_source_mesh.vertices, aligned_source_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_BA_{hemi}_{surfType}"))
+
+# Save the combined transformation matrix
 matrix_filename = os.path.join(output_folder, f"{project}_{subject_id}_{hemi}_{surfType}_transformation_matrix.pkl")
 with open(matrix_filename, 'wb') as matrix_file:
     pickle.dump(combined_transformation_matrix, matrix_file)
 
-# Load predicted mesh from project's predictionshcp_lh_298455.white.stl
-pred_path = os.path.join(project_pred_base_path, f"hcp_{hemi}_{subject_id}.{surfType}")
-third_mesh_vertices, third_mesh_faces = nib.freesurfer.io.read_geometry(pred_path)
+# Load predicted mesh from project's predictions
+pred_path = os.path.join(project_pred_base_path, f"hcp_{hemi}_{subject_id}.pred.{surfType}")
+pred_vertices, pred_faces = load_freesurfer_mesh(pred_path)
+pred_mesh = trimesh.Trimesh(vertices=pred_vertices, faces=pred_faces)
 
-# Create a PyVista mesh from the loaded vertices and faces
-third_mesh = pv.PolyData(third_mesh_vertices, third_mesh_faces)
+# Save predicted mesh
+save_freesurfer_mesh(pred_vertices, pred_faces, os.path.join(output_folder, f"{project}_{subject_id}_C_{hemi}_{surfType}"))
 
-# Save third_mesh as STL format
-save_mesh(third_mesh, os.path.join(output_folder, f"{project}_{subject_id}_C_{hemi}_{surfType}.stl"), 'stl')
+# Transform predicted mesh using the combined transformation matrix
+transformed_pred_vertices = apply_affine(pred_mesh.vertices, combined_transformation_matrix)
+transformed_pred_mesh = trimesh.Trimesh(vertices=transformed_pred_vertices, faces=pred_mesh.faces)
 
-# Transform third_mesh using the combined transformation matrix
-transformed_third_mesh = third_mesh.copy().transform(combined_transformation_matrix)
-
-# Save transformed_third_mesh as STL format
-save_mesh(transformed_third_mesh, os.path.join(output_folder, f"{project}_{subject_id}_CA_{hemi}_{surfType}.stl"), 'stl')
+# Save transformed predicted mesh
+save_freesurfer_mesh(transformed_pred_mesh.vertices, transformed_pred_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_CA_{hemi}_{surfType}"))
 
 # Load the medial wall ply file
-mw_file_path = os.path.join(subjects_dir, subject_id, 'surf', f'{hemi}.{surfType}.medial_wall.ply')
-# if not os.path.exists(mw_file_path):
-#     createMedialWallPly(mw_file_path)
+mw_file_path = os.path.join('/data/users2/washbee/CortexODE-CSRFusionNet/wacvanalysis/frameworks/freesurfer/mwremoved',
+                            f'{subject_id}.{hemi}.{surfType}.medial_wall.ply')
 
-medial_wall = pv.read(mw_file_path)
+medial_wall = trimesh.load(mw_file_path)
 
-# Save medial_wall as PLY format
-save_mesh(medial_wall, os.path.join(output_folder, f"{project}_{subject_id}_mw_{hemi}_{surfType}.ply"), 'ply')
+# Check if medial_wall is a PointCloud
+if isinstance(medial_wall, trimesh.points.PointCloud):
+    medial_wall = trimesh.Trimesh(vertices=medial_wall.vertices, faces=[[0, 0, 0]])
 
-# Transform medial_wall using the inverse of combined_transformation_matrix
-transformed_medial_wall = medial_wall.copy().transform(np.linalg.inv(combined_transformation_matrix))
+# Transform medial wall using the inverse of combined transformation_matrix
+inverse_transformation_matrix = np.linalg.inv(combined_transformation_matrix)
+transformed_mw_vertices = apply_affine(medial_wall.vertices, inverse_transformation_matrix)
+transformed_medial_wall = trimesh.Trimesh(vertices=transformed_mw_vertices, faces=medial_wall.faces)
 
-# Save transformed_medial_wall as PLY format
-save_mesh(transformed_medial_wall, os.path.join(output_folder, f"{project}_{subject_id}_invmw_{hemi}_{surfType}.ply"), 'ply')
+# Save transformed medial wall mesh
+save_freesurfer_mesh(transformed_medial_wall.vertices, transformed_medial_wall.faces, os.path.join(output_folder, f"{project}_{subject_id}_invmw_{hemi}_{surfType}"))
 
-# Perform minuspatch operation on third_mesh with transformed_medial_wall
-modified_mesh = remove_medial_wall.minuspatch_optimized(third_mesh, transformed_medial_wall.points, K=60)
-if isinstance(modified_mesh, pv.UnstructuredGrid):
-    modified_mesh = modified_mesh.extract_surface()
+# Perform minuspatch operation (adjust the function as needed for trimesh)
+def minuspatch_optimized(meshA, patch, K=1):
+    # Calculate centroids of faces in the mesh
+    faces = meshA.faces
+    centroids = meshA.triangles_center
 
-modified_mesh.compute_normals(cell_normals=True, point_normals=False, inplace=True)
+    # Build KDTree using centroids
+    kd_tree = cKDTree(centroids)
 
-# Save modified_mesh as STL format
-save_mesh(modified_mesh, os.path.join(output_folder, f"{project}_{subject_id}_C_mwrm_{hemi}_{surfType}.stl"), 'stl')
+    # Find nearest neighbor faces for each point in the patch
+    face_indices = set()
+    for point in patch:
+        _, indices = kd_tree.query(point, k=K)
+        face_indices.update(indices)
+
+    # Remove the faces from the mesh
+    mask = np.ones(len(meshA.faces), dtype=bool)
+    mask[list(face_indices)] = False
+    clean_mesh = meshA.submesh([mask], append=True)
+
+    return clean_mesh
+
+modified_mesh = minuspatch_optimized(pred_mesh, transformed_medial_wall.vertices, K=60)
+
+# Save modified mesh
+save_freesurfer_mesh(modified_mesh.vertices, modified_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_C_mwrm_{hemi}_{surfType}"))
