@@ -33,7 +33,7 @@ def parse_log_file(filepath):
 
 def main(logs_directory):
     data = []
-    model_dir = "./model"
+    model_dir = "../model"
     os.makedirs(model_dir, exist_ok=True)
     
     best_models = {}
@@ -43,11 +43,17 @@ def main(logs_directory):
             print(f"Processing file: {filename}")
             params = extract_parameters_from_filename(filename)
             if params:
+                print('params')
+                print(params)
                 surf_type, dataset, hemi, version, gnn, gnn_layers, scaling_factor, solver, heads = params
                 filepath = os.path.join(logs_directory, filename)
                 best_epoch, best_validation_error = parse_log_file(filepath)
+                print('best_epoch',best_epoch)
+                print('best_validation_error',best_validation_error)
                 if best_epoch != -1:
                     key = (surf_type, hemi)
+                    print('key')
+                    print(key)
                     if key not in best_models or best_models[key]['best_validation_error'] > best_validation_error:
                         best_models[key] = {
                             "surf_type": surf_type,
@@ -64,9 +70,13 @@ def main(logs_directory):
                         }
 
     for key, model_info in best_models.items():
-        model_filename = f"model_{model_info['surf_type']}_{model_info['dataset']}_{model_info['hemi']}_csrf_v{model_info['version']}_gnngat_layers{model_info['gnn_layers']}_sf{model_info['scaling_factor']}_{model_info['best_epoch']}epochs_{model_info['solver']}_heads{model_info['heads']}.pt"
+        #real model_wm_hcp_rh_csrf_v3_gnngat_layers4_sf0.1_heads1_50epochs_euler.pt
+        model_filename = f"model_{model_info['surf_type']}_{model_info['dataset']}_{model_info['hemi']}_csrf_v{model_info['version']}_gnngat_layers{model_info['gnn_layers']}_sf{model_info['scaling_factor']}_heads{model_info['heads']}_{model_info['best_epoch']}epochs_{model_info['solver']}.pt"
         model_path = os.path.abspath(os.path.join(logs_directory, model_filename))
+        print('key,model_info',key,model_info)
+        print(model_path)
         if os.path.exists(model_path):
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             shutil.copy(model_path, model_dir)
             data.append({
                 "surf_type": model_info['surf_type'],

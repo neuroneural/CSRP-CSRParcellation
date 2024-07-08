@@ -59,8 +59,6 @@ def seg2surf(seg, device, data_name='hcp', sigma=0.5, alpha=16, level=0.8, n_smo
 
     sdf_topo = topo_correct.apply(sdf, threshold=alpha)
     
-
-
     # ------ marching cubes ------
     v_mc, f_mc, _, _ = measure.marching_cubes(-sdf_topo, level=-level, method='lorensen')
     v_mc = v_mc[:, [2, 1, 0]].copy()
@@ -135,42 +133,20 @@ def evaluate(config):
     # --------------------------
     logging.info("initialize surface reconstruction model ...")
     
-    if model_type == 'csrf' and version == '2':
-        cortexode = CSRFnetV2(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
-                       use_pytorch3d_normal=config.use_pytorch3d_normal,
-                       sf=config.sf,
-                       gnn_layers=config.gnn_layers,
-                       use_gcn=config.gnn=='gcn',
-                       gat_heads=config.gat_heads
-                       ).to(device)
-    elif model_type == 'csrf' and version == '3':
+    if model_type == 'csrf' and version == '3':
         cortexode = CSRFnetV3(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
                        sf=config.sf,
-                       use_pytorch3d_normal=config.use_pytorch3d_normal,
+                       use_pytorch3d_normal=True,
                        gnn_layers=config.gnn_layers,
-                       use_gcn=config.gnn=='gcn',
-                       gat_heads=config.gat_heads
-                       ).to(device)
-    elif model_type == 'csrf' and version == '4':
-        cortexode = CSRFnetV4(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
-                        use_pytorch3d_normal=config.use_pytorch3d_normal,
-                       sf=config.sf,
-                       gnn_layers=config.gnn_layers,
-                       use_gcn=config.gnn=='gcn',
-                       gat_heads=config.gat_heads
-                       ).to(device)
-    elif model_type == 'csrf' and version == '5':
-        cortexode = CSRFnetV5(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
-                       use_pytorch3d_normal=config.use_pytorch3d_normal,
-                       sf=config.sf,
-                       gnn_layers=config.gnn_layers,
-                       use_gcn=config.gnn=='gcn',
+                       use_gcn=False,
                        gat_heads=config.gat_heads
                        ).to(device)
     else:
+        assert False, "debugging csrf, remove later"
         cortexode = CortexODE(dim_in=3, dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale).to(device)
     
     model_path = os.path.join(config.model_dir, config.model_file)
+    print('model_path\n',model_path)
     cortexode.load_state_dict(torch.load(model_path))
     
     T = torch.Tensor([0, 1]).to(device)  # integration time interval for ODE

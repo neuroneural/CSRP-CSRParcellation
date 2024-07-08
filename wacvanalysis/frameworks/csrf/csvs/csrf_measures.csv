@@ -1,0 +1,13 @@
+Framework,Subject ID,surf_type,Hemisphere,Metric,Label,Score,Total Triangles
+csrf,200210,pial,lh,Chamfer Distance,,0.9264586650140588,
+csrf,200210,pial,lh,Hausdorff Distance,,7.269695249841008,
+csrf,200210,pial,lh,Self-Intersections (SIF),,-1,284912
+csrf,200210,pial,rh,Chamfer Distance,,0.9196244718685674,
+csrf,200210,pial,rh,Hausdorff Distance,,6.68944848675997,
+csrf,200210,pial,rh,Self-Intersections (SIF),,-1,287215
+csrf,200210,white,lh,Chamfer Distance,,0.7879217723960121,
+csrf,200210,white,lh,Hausdorff Distance,,8.501034139804775,
+csrf,200210,white,lh,Self-Intersections (SIF),,-1,284545
+csrf,200210,white,rh,Chamfer Distance,,0.7726041949265967,
+csrf,200210,white,rh,Hausdorff Distance,,5.722931579002223,
+csrf,200210,white,rh,Self-Intersections (SIF),,-1,288055

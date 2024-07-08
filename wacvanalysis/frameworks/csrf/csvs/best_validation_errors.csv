@@ -1,1 +1,5 @@
-
+surf_type,dataset,hemi,version,gnn_layers,scaling_factor,solver,heads,best_epoch,best_validation_error,logfile,model_path
+gm,hcp,lh,3,3,0.1,euler,1,180,0.02536526997197331,model_gm_hcp_lh_csrf_v3_gnngat_layers3_sf0.1_euler_heads1.log,/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_csrf_gnn_2/model/model_gm_hcp_lh_csrf_v3_gnngat_layers3_sf0.1_heads1_180epochs_euler.pt
+wm,hcp,rh,3,3,0.1,euler,1,200,0.029194955835731073,model_wm_hcp_rh_csrf_v3_gnngat_layers3_sf0.1_euler_heads1.log,/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_csrf_gnn_2/model/model_wm_hcp_rh_csrf_v3_gnngat_layers3_sf0.1_heads1_200epochs_euler.pt
+wm,hcp,lh,3,4,0.1,euler,1,200,0.029652983232216653,model_wm_hcp_lh_csrf_v3_gnngat_layers4_sf0.1_euler_heads1.log,/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_csrf_gnn_2/model/model_wm_hcp_lh_csrf_v3_gnngat_layers4_sf0.1_heads1_200epochs_euler.pt
+gm,hcp,rh,3,3,0.1,euler,1,160,0.026138303869159024,model_gm_hcp_rh_csrf_v3_gnngat_layers3_sf0.1_euler_heads1.log,/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_csrf_gnn_2/model/model_gm_hcp_rh_csrf_v3_gnngat_layers3_sf0.1_heads1_160epochs_euler.pt

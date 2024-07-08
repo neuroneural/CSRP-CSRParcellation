@@ -79,7 +79,7 @@ def main(logs_directory):
         df = df.sort_values(by='best_validation_dice', ascending=False)
         
         output_csv_path = os.path.join(
-            '/data/users2/washbee/CortexODE-CSRFusionNet/wacvanalysis/frameworks/csrfparc/assym/csv',
+            '/data/users2/washbee/CortexODE-CSRFusionNet/wacvanalysis/frameworks/csrfparc/sym/csv',
             'best_validation_dice_scores.csv'
         )
         df.to_csv(output_csv_path, index=False)
@@ -88,5 +88,5 @@ def main(logs_directory):
         print("No data to write to CSV.")
 
 if __name__ == "__main__":
-    logs_directory = "/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_vc_assym_gnn_0/model"
+    logs_directory = "/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_vc_sym_gnn_0/model"
     main(logs_directory)

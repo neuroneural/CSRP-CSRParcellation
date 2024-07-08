@@ -13,9 +13,6 @@ from util.mesh import compute_normal
 from model.deformationgnn import DeformationGNN
 from pytorch3d.structures import Meshes
 
-
-
-
 class NodeFeatureNet(nn.Module):
     def __init__(self, C=128, K=5, n_scale=1,use_pytorch3d_normal=True):
         super(NodeFeatureNet, self).__init__()
