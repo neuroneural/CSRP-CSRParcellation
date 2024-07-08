@@ -1,9 +1,0 @@
-  0%|          | 0/107 [00:00<?, ?it/s]/opt/miniconda3/envs/cortexode/lib/python3.7/site-packages/torch/nn/functional.py:3063: UserWarning: Default upsampling behavior when mode=trilinear is changed to align_corners=False since 0.4.0. Please specify align_corners=True if the old behavior is desired. See the documentation of nn.Upsample for details.
-  "See the documentation of nn.Upsample for details.".format(mode))
-  0%|          | 0/107 [00:11<?, ?it/s]
-Traceback (most recent call last):
-  File "eval.py", line 208, in <module>
-    v_wm_pred, f_wm_pred)
-  File "/home/users/washbee1/.local/lib/python3.7/site-packages/nibabel/freesurfer/io.py", line 233, in write_geometry
-    with open(filepath, 'wb') as fobj:
-FileNotFoundError: [Errno 2] No such file or directory: '/cortexode/ckpts/rp-hcptrained-testset/hcp_lh_200008.white'

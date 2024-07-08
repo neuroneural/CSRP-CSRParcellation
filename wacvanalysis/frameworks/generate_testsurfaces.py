@@ -231,7 +231,7 @@ def evaluate(config):
                 f_gm_pred = f_gm_pred.cpu().numpy()
                 gm_path = os.path.join(result_dir, f'{data_name}_{surf_hemi}_{subid}.pred.pial')
                 save_mesh(v_gm_pred, f_gm_pred, gm_path,data_name)
-
+            
             logging.info(f'Saved reconstructed surfaces for {subid} to {result_dir}')
 
 if __name__ == '__main__':

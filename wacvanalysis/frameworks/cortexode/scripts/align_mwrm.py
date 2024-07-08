@@ -170,6 +170,19 @@ def minuspatch_optimized(meshA, patch, K=1):
 
     return clean_mesh
 
+# Create A_mwrm mesh
+a_mwrm_mesh = minuspatch_optimized(target_mesh, medial_wall_vertices, K=60)
+save_freesurfer_mesh(a_mwrm_mesh.vertices, a_mwrm_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_A_mwrm_{hemi}_{surfType}"))
+
+# Create BA_mwrm mesh
+ba_mwrm_mesh = minuspatch_optimized(aligned_source_mesh, medial_wall_vertices, K=60)
+save_freesurfer_mesh(ba_mwrm_mesh.vertices, ba_mwrm_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_BA_mwrm_{hemi}_{surfType}"))
+
+# Create CA_mwrm mesh
+ca_mwrm_mesh = minuspatch_optimized(transformed_pred_mesh, medial_wall_vertices, K=60)
+save_freesurfer_mesh(ca_mwrm_mesh.vertices, ca_mwrm_mesh.faces, os.path.join(output_folder, f"{project}_{subject_id}_CA_mwrm_{hemi}_{surfType}"))
+
+# Perform minuspatch operation on transformed predicted mesh
 modified_mesh = minuspatch_optimized(pred_mesh, transformed_mw_vertices, K=60)
 
 # Save modified mesh
