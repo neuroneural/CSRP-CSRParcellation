@@ -1,0 +1,3 @@
+gnn_layers,surf_hemi,surf_type,average_dice_score
+12,lh,gm,0.932197781705108
+12,rh,gm,0.924924829753186

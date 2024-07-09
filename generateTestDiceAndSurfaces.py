@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from tqdm import tqdm
 from data.vc_dataloader2 import CSRVertexLabeledDataset  # Ensure this matches your data loader path
+from data.datautil import decode_names
 from model.csrvertexclassification import CSRVCNet
 
 import logging
@@ -38,15 +39,27 @@ def get_num_classes(atlas):
     }
     return atlas_num_classes.get(atlas, 0)
 
-def save_mesh_with_annotations(verts, faces, labels, save_path_fs, data_name='hcp'):
+def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_name='hcp'):
     verts = verts.squeeze().cpu().numpy()
     faces = faces.squeeze().squeeze().long().cpu().numpy()
     verts, faces = process_surface_inverse(verts, faces, data_name)
-
+    
     labels = labels.squeeze().long().cpu().numpy()
     
+    # Remap the labels of class 4 to class -1
+    labels[labels == 4] = -1
+    
+    # Ensure ctab is correctly sized
+    print(f"ctab size: {ctab.shape}")
+    assert ctab.shape[2] == 5, "see nibabel docs."
+    
     nib.freesurfer.write_geometry(save_path_fs + '.surf', verts, faces)
-    nib.freesurfer.write_annot(save_path_fs + '.annot', labels)
+    nib.freesurfer.write_annot(save_path_fs + '.annot', 
+                               labels,
+                               ctab.squeeze().long().cpu().numpy(),
+                               decode_names(), fill_ctab=False)
+
+    
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
     dice_scores = []
@@ -147,7 +160,7 @@ def evaluate_model(config):
         exclude_classes = [-1,4]
 
         for idx, data in enumerate(testloader):
-            volume_in, v_in, f_in, labels, subid, color_map = data  # Ensure this matches your data loader output
+            volume_in, v_in, f_in, labels, subid, ctab = data  # Ensure this matches your data loader output
 
             volume_in = volume_in.to(device).float()
             v_in = v_in.to(device)
@@ -174,8 +187,8 @@ def evaluate_model(config):
             pred_save_path_fs = os.path.join(result_dir, f"annotated_mesh_pred_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
             gt_save_path_fs = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
                                         
-            save_mesh_with_annotations(v_in,f_in, preds, pred_save_path_fs, data_name='hcp')
-            save_mesh_with_annotations(v_in,f_in, labels, gt_save_path_fs, data_name='hcp')
+            save_mesh_with_annotations(v_in, f_in, preds, ctab, pred_save_path_fs, data_name='hcp')
+            save_mesh_with_annotations(v_in, f_in, labels, ctab, gt_save_path_fs, data_name='hcp')
             
             print(f"Saved predicted annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {pred_save_path_fs}.surf/.annot")
             print(f"Saved ground truth annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {gt_save_path_fs}.surf/.annot")
@@ -184,7 +197,7 @@ def evaluate_model(config):
         print(f"Average test Dice score: {avg_test_dice_score}")
 
         # Save results to CSV
-        csv_log_path = os.path.join(model_dir, f"test_results_vertex_classification_{tag}.csv")
+        csv_log_path = os.path.join(result_dir, f"test_results_vertex_classification_{tag}.csv")
         fieldnames = ['subject_id', 'gnn_layers', 'surf_hemi', 'surf_type', 'test_dice_score']
 
         if not os.path.exists(csv_log_path):
@@ -195,7 +208,7 @@ def evaluate_model(config):
         with open(csv_log_path, 'a', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             for idx, data in enumerate(testloader):
-                volume_in, v_in, f_in, labels, subid, color_map = data  # Ensure this matches your data loader output
+                volume_in, v_in, f_in, labels, subid, ctab = data  # Ensure this matches your data loader output
                 writer.writerow({
                     'subject_id': subid[0],
                     'gnn_layers': config.gnn_layers,

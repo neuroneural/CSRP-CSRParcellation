@@ -9,16 +9,19 @@ import matplotlib.pyplot as plt
 import re
 
 class VertexData:
-    def __init__(self, brain_arr, v, f, labels, subid, color_map):
+    def __init__(self, brain_arr, v, f, labels, subid, ctab,names):
         self.brain_arr = torch.Tensor(brain_arr)
         self.v = torch.Tensor(v)
         self.f = torch.LongTensor(f)
         self.labels = torch.from_numpy(labels.astype(np.float32)).long()  # converting to float is a workaround for some endian problems
         self.subid = subid
-        self.color_map = torch.from_numpy(color_map.astype(np.float32)).long()  # workaround
+        self.ctab = torch.from_numpy(ctab.astype(np.float32)).long() #doesn't need gpu
+        # print('names',names)
+        # print('type',type(names))
+        # self.names = torch.tensor(names) #doesn't need gpu
     
     def get_data(self):
-        return self.brain_arr, self.v, self.f, self.labels, self.subid, self.color_map
+        return self.brain_arr, self.v, self.f, self.labels, self.subid, self.ctab#, self.names
 
 
 class CSRVertexLabeledDataset(Dataset):
@@ -34,8 +37,8 @@ class CSRVertexLabeledDataset(Dataset):
     
     def __getitem__(self, idx):
         subid = self.subject_list[idx]
-        brain_arr, v, f, labels, color_map = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
-        return VertexData(brain_arr, v, f, labels, subid, color_map).get_data()
+        brain_arr, v, f, labels, ctab,names = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
+        return VertexData(brain_arr, v, f, labels, subid, ctab,names).get_data()
     
     # def _generate_color_map(self, subid):
     #     """
@@ -102,9 +105,9 @@ class CSRVertexLabeledDataset(Dataset):
             v = v_tmp.dot(np.linalg.inv(brain.affine).T)[:, :3]
         v, f = process_surface(v, f, data_name)
 
-        labels, color_map = self._load_vertex_labels(atlas_dir, surf_hemi, config.atlas)
+        labels, ctab,names = self._load_vertex_labels(atlas_dir, surf_hemi, config.atlas)
 
-        return brain_arr, v, f, labels, color_map
+        return brain_arr, v, f, labels, ctab,names
     
 
     def _load_vertex_labels(self, atlas_dir, surf_hemi, atlas):
@@ -114,17 +117,17 @@ class CSRVertexLabeledDataset(Dataset):
             annot_file = os.path.join(atlas_dir, f'{surf_hemi}.aparc.{atlas}.annot')
         else:
             assert False, "label mapping not supported yet"
-        labels, ctab, _names = nib.freesurfer.io.read_annot(annot_file)
+        labels, ctab, names = nib.freesurfer.io.read_annot(annot_file)
         if self.config.atlas == 'aparc' or self.config.atlas == 'DKTatlas40':
             labels[labels == -1] = 4 #non cortex, see ctab file
         else:
             assert False, "label mapping not supported yet"# Convert ctab to RGB format, excluding the -1 label color if necessary
-        color_map = ctab[:, :3]
+        # color_map = ctab[:, :3]
         
-        # Ensure there are enough colors for the classes excluding -1
-        if color_map.shape[0] < len(_names): 
-            raise ValueError(f"Colormap does not have enough colors for the classes.")
+        # # Ensure there are enough colors for the classes excluding -1
+        # if color_map.shape[0] < len(_names): 
+        #     raise ValueError(f"Colormap does not have enough colors for the classes.")
 
-        return labels, color_map
+        return labels, ctab, names
 
 
