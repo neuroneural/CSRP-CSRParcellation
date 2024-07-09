@@ -38,36 +38,14 @@ def get_num_classes(atlas):
     }
     return atlas_num_classes.get(atlas, 0)
 
-def save_mesh_with_annotations(mesh, labels, save_path_ply, save_path_fs, color_map, data_name='hcp'):
-    verts, faces = process_surface_inverse(mesh.verts_packed().squeeze().cpu().numpy(), mesh.faces_packed().squeeze().cpu().numpy(), data_name)
-    assert verts.shape[0] != 1 
-    assert faces.shape[0] != 1 
-    invalid_mask = (labels < 0) | (labels >= color_map.size(1))
-    
-    if invalid_mask.any():
-        print(f"Invalid labels found: {labels[invalid_mask]}")
-        labels[invalid_mask] = 0  # Assign a default valid label
+def save_mesh_with_annotations(verts, faces, labels, save_path_fs, data_name='hcp'):
+    verts = verts.squeeze().cpu().numpy()
+    faces = faces.squeeze().squeeze().long().cpu().numpy()
+    verts, faces = process_surface_inverse(verts, faces, data_name)
 
     labels = labels.squeeze().long().cpu().numpy()
-    assert labels.shape[0] != 1
-    vertex_colors = color_map[0, labels, :].cpu().numpy()
-    vertex_colors = vertex_colors.squeeze()
-
-    vertices = np.array([(*verts[i], *vertex_colors[i]) for i in range(len(verts))],
-                        dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4'), 
-                               ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
-
-    faces = np.array([(faces[i],) for i in range(len(faces))],
-                      dtype=[('vertex_indices', 'i4', (3,))])
-
-    vertex_element = PlyElement.describe(vertices, 'vertex')
-    face_element = PlyElement.describe(faces, 'face')
-
-    PlyData([vertex_element, face_element], text=True).write(save_path_ply)
-
-    # Save as FreeSurfer format
-    faces_fs = np.hstack((np.ones((faces.shape[0], 1), dtype=int) * 3, faces.view(np.int32)))
-    nib.freesurfer.write_geometry(save_path_fs + '.surf', verts, faces_fs)
+    
+    nib.freesurfer.write_geometry(save_path_fs + '.surf', verts, faces)
     nib.freesurfer.write_annot(save_path_fs + '.annot', labels)
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
@@ -187,19 +165,20 @@ def evaluate_model(config):
                 continue  # Skip this batch
 
             preds = torch.argmax(logits, dim=1)  # Get predicted labels
+            
             dice_score = compute_dice(preds, labels, num_classes, exclude_classes)
             test_dice_scores.append(dice_score)
 
             # Save the predicted and ground truth annotated meshes in both PLY and FreeSurfer formats
-            mesh = Meshes(verts=v_in, faces=f_in)
-            pred_save_path_ply = os.path.join(result_dir, f"annotated_mesh_pred_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}.ply")
-            gt_save_path_ply = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}.ply")
+            
             pred_save_path_fs = os.path.join(result_dir, f"annotated_mesh_pred_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
             gt_save_path_fs = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
-            save_mesh_with_annotations(mesh, preds, pred_save_path_ply, pred_save_path_fs, color_map)
-            save_mesh_with_annotations(mesh, labels, gt_save_path_ply, gt_save_path_fs, color_map)
-            print(f"Saved predicted annotated mesh for subject {subid[0]} to {pred_save_path_ply} and {pred_save_path_fs}.surf/.annot")
-            print(f"Saved ground truth annotated mesh for subject {subid[0]} to {gt_save_path_ply} and {gt_save_path_fs}.surf/.annot")
+                                        
+            save_mesh_with_annotations(v_in,f_in, preds, pred_save_path_fs, data_name='hcp')
+            save_mesh_with_annotations(v_in,f_in, labels, gt_save_path_fs, data_name='hcp')
+            
+            print(f"Saved predicted annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {pred_save_path_fs}.surf/.annot")
+            print(f"Saved ground truth annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {gt_save_path_fs}.surf/.annot")
 
         avg_test_dice_score = np.mean(test_dice_scores)
         print(f"Average test Dice score: {avg_test_dice_score}")

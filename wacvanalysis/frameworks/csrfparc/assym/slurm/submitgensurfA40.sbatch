@@ -3,7 +3,7 @@
 #SBATCH -c 8
 #SBATCH --mem=55g
 #SBATCH -p qTRDGPUH
-#SBATCH --gres=gpu:A100:1
+#SBATCH --gres=gpu:V100:1
 #SBATCH -t 1-00:00
 #SBATCH -J vcLGs
 #SBATCH -e jobs/error%A_%a.err
@@ -12,8 +12,6 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=washbee1@student.gsu.edu
 #SBATCH --oversubscribe
-#SBATCH --nodelist=arctrddgxa001
-#SBATCH --exclude=arctrddgxa002
 
 sleep 5s
 
