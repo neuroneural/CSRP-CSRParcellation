@@ -124,18 +124,11 @@ def evaluate(config, data_usage):
     # --------------------------
     logging.info("Initialize surface reconstruction model ...")
     gnn_layers=0
-    if model_type == 'csrf':
+    assert model_type != 'csrf' #used for deformation
+    if model_type == 'csrvc':
         gnn_layers=config.gnn_layers
     
-    if model_type == 'csrf' and version == '2':
-        cortexode = CSRFnetV2(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
-                              use_pytorch3d_normal=config.use_pytorch3d_normal,
-                              sf=config.sf,
-                              gnn_layers=config.gnn_layers,
-                              use_gcn=config.gnn == 'gcn',
-                              gat_heads=config.gat_heads
-                              ).to(device)
-    elif model_type == 'csrf' and version == '3':
+    if  model_type == 'csrvc' and version == '3':
         cortexode = CSRFnetV3(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
                               sf=config.sf,
                               use_pytorch3d_normal=config.use_pytorch3d_normal,
@@ -143,23 +136,8 @@ def evaluate(config, data_usage):
                               use_gcn=config.gnn == 'gcn',
                               gat_heads=config.gat_heads
                               ).to(device)
-    elif model_type == 'csrf' and version == '4':
-        cortexode = CSRFnetV4(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
-                              use_pytorch3d_normal=config.use_pytorch3d_normal,
-                              sf=config.sf,
-                              gnn_layers=config.gnn_layers,
-                              use_gcn=config.gnn == 'gcn',
-                              gat_heads=config.gat_heads
-                              ).to(device)
-    elif model_type == 'csrf' and version == '5':
-        cortexode = CSRFnetV5(dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale,
-                              use_pytorch3d_normal=config.use_pytorch3d_normal,
-                              sf=config.sf,
-                              gnn_layers=config.gnn_layers,
-                              use_gcn=config.gnn == 'gcn',
-                              gat_heads=config.gat_heads
-                              ).to(device)
     else:
+        assert False, "for debugging/safety"
         cortexode = CortexODE(dim_in=3, dim_h=config.dim_h, kernel_size=config.kernel_size, n_scale=config.n_scale).to(device)
     
     model_path = os.path.join(config.model_dir, config.model_file)
@@ -200,7 +178,7 @@ def evaluate(config, data_usage):
             print('verts,faces', verts.shape, faces.shape)
             
             # Process the initial surface with the surface reconstruction model
-            if model_type == 'csrf' and config.gnn == 'gat':
+            if model_type == 'csrvc' and config.gnn == 'gat':
                 cortexode.set_data(verts, volume_in, f=faces)
             else:
                 cortexode.set_data(verts, volume_in)  # set the input data
@@ -222,5 +200,9 @@ def evaluate(config, data_usage):
 
 if __name__ == '__main__':
     config = load_config()
-    for data_usage in ['train', 'valid', 'test']:
+    #generate all for training
+    # for data_usage in ['train', 'valid', 'test']:
+    #     evaluate(config, data_usage)
+    
+    for data_usage in ['test']:
         evaluate(config, data_usage)

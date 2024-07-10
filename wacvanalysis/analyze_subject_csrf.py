@@ -111,10 +111,10 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
         for hemi in hemispheres:
             # Paths for BA and CA surfaces
             try:
-                ba_surf_path = os.path.join(subject_base_path, f'csrf_{subj_id}_BA_{hemi}_{surf_type}')
+                ba_surf_path = os.path.join(subject_base_path, f'{framework_name}_{subj_id}_BA_{hemi}_{surf_type}')
                 print('ba_surf_path',ba_surf_path)
-                ca_surf_path = os.path.join(subject_base_path, f'csrf_{subj_id}_CA_{hemi}_{surf_type}')
-                ca_mwrm_surf_path = os.path.join(subject_base_path, f'csrf_{subj_id}_CA_mwrm_{hemi}_{surf_type}')
+                ca_surf_path = os.path.join(subject_base_path, f'{framework_name}_{subj_id}_CA_{hemi}_{surf_type}')
+                ca_mwrm_surf_path = os.path.join(subject_base_path, f'{framework_name}_{subj_id}_CA_mwrm_{hemi}_{surf_type}')
                 
                 ba_surf = load_freesurfer_surface(ba_surf_path)
                 ca_surf = load_freesurfer_surface(ca_surf_path)
@@ -128,8 +128,7 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
             hausdorff_dist = compute_hausdorff_distance(ba_surf, ca_surf)
             
             # Compute self-intersections for CA_mwrm surfaces
-            #self_collision_count = count_self_collisions(ca_mwrm_surf, k=30)
-            self_collision_count = -1
+            self_collision_count = count_self_collisions(ca_mwrm_surf, k=30)
             total_triangles = len(ca_mwrm_surf['faces'])
 
             # Write results to CSV

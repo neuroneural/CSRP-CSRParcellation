@@ -25,27 +25,27 @@ def chamfer_distance(v1, v2):
 
 
 class VertexData:
-    def __init__(self, brain_arr, v_gt, f_gt, labels, subid, color_map, v_in=None, f_in=None, nearest_labels=None, mask=None):
+    def __init__(self, brain_arr, v_gt, f_gt, labels, subid, ctab, v_in=None, f_in=None, nearest_labels=None, mask=None):
         # Add print statements and assertions
         assert brain_arr is not None, "brain_arr is None"
         assert v_gt is not None, "v_gt is None"
         assert f_gt is not None, "f_gt is None"
         assert labels is not None, "labels are None"
         assert subid is not None, "subid is None"
-        assert color_map is not None, "color_map is None"
+        assert ctab is not None, "ctab is None"
         
         self.brain_arr = torch.Tensor(brain_arr)
         self.v_gt = torch.Tensor(v_gt)
         self.f_gt = torch.from_numpy(f_gt.astype(np.float32)).long()# converting to float is a workaround for some endian problems
         self.labels = torch.from_numpy(labels.astype(np.float32)).long()
         self.subid = subid
-        self.color_map = torch.from_numpy(color_map.astype(np.float32)).long()
+        self.ctab = torch.from_numpy(ctab.astype(np.float32)).long()
         self.v_in = torch.Tensor(v_in) if v_in is not None else None
         self.f_in = torch.from_numpy(f_in.astype(np.float32)).long() if f_in is not None else None
         self.nearest_labels = torch.from_numpy(nearest_labels.astype(np.float32)).long() if nearest_labels is not None else None
         self.mask = torch.Tensor(mask) if mask is not None else None
     def get_data(self):
-        return self.brain_arr, self.v_gt, self.f_gt, self.labels, self.subid, self.color_map, self.v_in, self.f_in, self.nearest_labels, self.mask
+        return self.brain_arr, self.v_gt, self.f_gt, self.labels, self.subid, self.ctab, self.v_in, self.f_in, self.nearest_labels, self.mask
 
 class CSRVertexLabeledDatasetV3(Dataset):
     def __init__(self, config, data_usage='train', num_classes=37):
@@ -59,10 +59,10 @@ class CSRVertexLabeledDatasetV3(Dataset):
     
     def __getitem__(self, idx):
         subid = self.subject_list[idx]
-        brain_arr, v_gt, f_gt, labels, color_map = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
+        brain_arr, v_gt, f_gt, labels, ctab = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
         v_in, f_in = self._load_input_mesh(subid)
         
-        assert v_in is not None, "v_in is None"
+        assert v_in is not None, f"v_in is None,{self.config.parc_init_dir}"
         assert f_in is not None, "f_in is None"
         
         normals = self._calculate_normals(v_in, f_in)
@@ -77,13 +77,13 @@ class CSRVertexLabeledDatasetV3(Dataset):
         assert f_gt is not None, "f_gt is None"
         assert labels is not None, "labels are None"
         assert subid is not None, "subid is None"
-        assert color_map is not None, "color_map is None"
+        assert ctab is not None, "ctab is None"
         assert v_in is not None, "v_in is None"
         assert f_in is not None, "f_in is None"
         assert nearest_labels is not None, "nearest_labels are None"
         assert mask is not None, "mask is None"
         
-        return VertexData(brain_arr, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask).get_data()
+        return VertexData(brain_arr, v_gt, f_gt, labels, subid, ctab, v_in, f_in, nearest_labels, mask).get_data()
     
     def _load_vertex_labeled_data_for_subject(self, subid, config, data_usage):
         data_dir = os.path.join(config.data_dir, data_usage)
@@ -117,10 +117,10 @@ class CSRVertexLabeledDatasetV3(Dataset):
             v, f = process_surface(v, f, data_name)
             assert v is not None and f is not None, f"Failed to load vertices or faces for subject {subid}"
         
-            labels, color_map = self._load_vertex_labels(atlas_dir, surf_hemi, config.atlas)
+            labels, ctab = self._load_vertex_labels(atlas_dir, surf_hemi, config.atlas)
             assert labels is not None, f"Failed to load labels for subject {subid}"
-            assert color_map is not None, f"Failed to load color_map for subject {subid}"
-            return brain_arr, v, f, labels, color_map
+            assert ctab is not None, f"Failed to load ctab for subject {subid}"
+            return brain_arr, v, f, labels, ctab
         except Exception as e:
             print(f"Error loading data for subject {subid}: {e}")
             return None, None, None, None, None
@@ -139,10 +139,9 @@ class CSRVertexLabeledDatasetV3(Dataset):
                 labels[labels == -1] = 4 #non cortex, see ctab file
             else:
                 assert False, "label mapping not supported yet"
-            color_map = ctab[:, :3]
-            if color_map.shape[0] < len(_names): 
+            if ctab.shape[0] < len(_names): 
                 raise ValueError(f"Colormap does not have enough colors for the classes.")
-            return labels, color_map
+            return labels, ctab
         except Exception as e:
             print(f"Error loading vertex labels: {e}")
             return None, None
@@ -154,7 +153,12 @@ class CSRVertexLabeledDatasetV3(Dataset):
             surf_hemi = self.config.surf_hemi  # surf_hemi from config
 
             # Get all available GNN layer files for the subject
-            pattern = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers\d_prediction'
+            if self.config.model_type2 !='baseline':
+                pattern = f'{subid}_{surf_type}_{surf_hemi}_source{self.config.model_type2}_gnnlayers\d_prediction'
+            else:
+                self.config.gnn_layers=0 
+                pattern = f'{subid}_{surf_type}_{surf_hemi}_source{self.config.model_type2}_gnnlayers\d_prediction'
+            print('pattern',pattern)
             available_files = [f for f in os.listdir(input_mesh_dir) if re.match(pattern, f)]
             if not available_files:
                 raise FileNotFoundError(f"No input mesh files found for subject {subid} with surf_type {surf_type} and surf_hemi {surf_hemi}.")
@@ -162,7 +166,7 @@ class CSRVertexLabeledDatasetV3(Dataset):
             # Extract the layer numbers and randomly select one
             gnn_layers = [int(re.search(r'gnnlayers(\d)', f).group(1)) for f in available_files]
             selected_layer = random.choice(gnn_layers)
-            filename = f'{subid}_{surf_type}_{surf_hemi}_sourcebaseline_gnnlayers{selected_layer}_prediction'
+            filename = f'{subid}_{surf_type}_{surf_hemi}_source{self.config.model_type2}_gnnlayers{selected_layer}_prediction'
             input_mesh_path = os.path.join(input_mesh_dir, filename)
             
             v_in, f_in = nib.freesurfer.io.read_geometry(input_mesh_path)

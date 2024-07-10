@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 from tqdm import tqdm
 from data.vc_dataloader2 import CSRVertexLabeledDataset  # Ensure this matches your data loader path
+from data.vc_dataloaderv3 import CSRVertexLabeledDatasetV3  # Ensure this matches your data loader path
 from data.datautil import decode_names
 from model.csrvertexclassification import CSRVCNet
 
@@ -148,9 +149,14 @@ def evaluate_model(config):
     # load test dataset
     # --------------------------
     logging.info("load test dataset ...")
-    testset = CSRVertexLabeledDataset(config, 'test')  # Ensure your data loader is correct
-    testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
     
+    if config.parc_init_dir == None:
+        testset = CSRVertexLabeledDataset(config, 'test')  # Ensure your data loader is correct
+        testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
+    else:
+        testset = CSRVertexLabeledDatasetV3(config, 'test')  # Ensure your data loader is correct
+        testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
+        
     # --------------------------
     # evaluation
     # --------------------------
@@ -159,40 +165,65 @@ def evaluate_model(config):
         test_dice_scores = []
         exclude_classes = [-1,4]
 
-        for idx, data in enumerate(testloader):
-            volume_in, v_in, f_in, labels, subid, ctab = data  # Ensure this matches your data loader output
+        if config.parc_init_dir == None:
+            for idx, data in enumerate(testloader):
+                volume_in, v_in, f_in, labels, subid, ctab = data  # Ensure this matches your data loader output
 
-            volume_in = volume_in.to(device).float()
-            v_in = v_in.to(device)
-            f_in = f_in.to(device)
-            labels = labels.to(device)  # Ensure labels are moved to the device
+                volume_in = volume_in.to(device).float()
+                v_in = v_in.to(device)
+                f_in = f_in.to(device)
+                labels = labels.to(device)  # Ensure labels are moved to the device
 
-            csrvcnet.set_data(v_in, volume_in, f=f_in)  # Set the input data
+                csrvcnet.set_data(v_in, volume_in, f=f_in)  # Set the input data
 
-            logits = csrvcnet(v_in)  # Forward pass
-            logits = logits.permute(0, 2, 1)  # Reshape logits
+                logits = csrvcnet(v_in)  # Forward pass
+                logits = logits.permute(0, 2, 1)  # Reshape logits
 
-            if torch.any(labels < 0) or torch.any(labels >= num_classes):
-                print(f"Invalid label detected in test batch {idx}")
-                print(f"Labels range: {labels.min()} to {labels.max()}")
-                continue  # Skip this batch
+                if torch.any(labels < 0) or torch.any(labels >= num_classes):
+                    print(f"Invalid label detected in test batch {idx}")
+                    print(f"Labels range: {labels.min()} to {labels.max()}")
+                    continue  # Skip this batch
 
-            preds = torch.argmax(logits, dim=1)  # Get predicted labels
-            
-            dice_score = compute_dice(preds, labels, num_classes, exclude_classes)
-            test_dice_scores.append(dice_score)
+                preds = torch.argmax(logits, dim=1)  # Get predicted labels
+                
+                dice_score = compute_dice(preds, labels, num_classes, exclude_classes)
+                test_dice_scores.append(dice_score)
 
-            # Save the predicted and ground truth annotated meshes in both PLY and FreeSurfer formats
-            
-            pred_save_path_fs = os.path.join(result_dir, f"annotated_mesh_pred_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
-            gt_save_path_fs = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
-                                        
-            save_mesh_with_annotations(v_in, f_in, preds, ctab, pred_save_path_fs, data_name='hcp')
-            save_mesh_with_annotations(v_in, f_in, labels, ctab, gt_save_path_fs, data_name='hcp')
-            
-            print(f"Saved predicted annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {pred_save_path_fs}.surf/.annot")
-            print(f"Saved ground truth annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {gt_save_path_fs}.surf/.annot")
+                pred_save_path_fs = os.path.join(result_dir, f"annotated_mesh_pred_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
+                gt_save_path_fs = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
+                                            
+                save_mesh_with_annotations(v_in, f_in, preds, ctab, pred_save_path_fs, data_name='hcp')
+                save_mesh_with_annotations(v_in, f_in, labels, ctab, gt_save_path_fs, data_name='hcp')
+                
+                print(f"Saved predicted annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {pred_save_path_fs}.surf/.annot")
+                print(f"Saved ground truth annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {gt_save_path_fs}.surf/.annot")
+        else:
+            for idx, data in enumerate(testloader):
+                volume_in, v_gt, f_gt, labels, subid, ctab, v_in, f_in, nearest_labels, mask = data
+                
+                volume_in = volume_in.to(device).float()
+                v_in = v_in.to(device)
+                f_in = f_in.to(device)
+                nearest_labels = nearest_labels.to(device)
+                mask = mask.to(device)
+                
+                csrvcnet.set_data(v_in, volume_in, f=f_in)
+                logits = csrvcnet(v_in)
+                preds = torch.argmax(logits, dim=2)
+                preds = preds.squeeze(0)
 
+                dice_score = compute_dice(preds, nearest_labels, num_classes, exclude_classes)
+                test_dice_scores.append(dice_score)
+                
+                pred_save_path_fs = os.path.join(result_dir, f"annotated_mesh_pred_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
+                gt_save_path_fs = os.path.join(result_dir, f"annotated_mesh_gt_{subid[0]}_{surf_hemi}_{surf_type}_layers{config.gnn_layers}")
+                                            
+                save_mesh_with_annotations(v_in, f_in, preds, ctab, pred_save_path_fs, data_name='hcp')
+                save_mesh_with_annotations(v_in, f_in, labels, ctab, gt_save_path_fs, data_name='hcp')
+                
+                print(f"Saved predicted annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {pred_save_path_fs}.surf/.annot")
+                print(f"Saved ground truth annotated mesh for subject {subid[0]} to {pred_save_path_fs} and {gt_save_path_fs}.surf/.annot")
+        
         avg_test_dice_score = np.mean(test_dice_scores)
         print(f"Average test Dice score: {avg_test_dice_score}")
 
@@ -205,9 +236,11 @@ def evaluate_model(config):
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
 
+        outset = CSRVertexLabeledDataset(config, 'test')  # Ensure your data loader is correct
+        outloader = DataLoader(outset, batch_size=1, shuffle=False, num_workers=4)
         with open(csv_log_path, 'a', newline='') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            for idx, data in enumerate(testloader):
+            for idx, data in enumerate(outloader):
                 volume_in, v_in, f_in, labels, subid, ctab = data  # Ensure this matches your data loader output
                 writer.writerow({
                     'subject_id': subid[0],

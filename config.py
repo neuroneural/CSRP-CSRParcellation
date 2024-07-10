@@ -10,6 +10,7 @@ def load_config():
     parser.add_argument('--data_dir', default="../dataset/hcp600/", type=str, help="directory of the dataset")
     parser.add_argument('--model_dir', default="./ckpts/model/", type=str, help="directory for saving the models")
     parser.add_argument('--model_type', default="csrf", type=str, help="either: [csrf, cortexode]")
+    parser.add_argument('--model_type2', default="baseline", type=str, help="either: [csrf, cortexode]")
     parser.add_argument('--segmentation_model_path', default="", type=str, help="path for segmentation model.")
     
     parser.add_argument('--seg_model_type', default="SegUnet", type=str, help="either: [SwinUNETR,MonaiUnet,SegUnet]")
@@ -70,7 +71,7 @@ def load_config():
     # for testing
     parser.add_argument('--test_type', default="pred", type=str, help="type of testing: [init, pred, eval]")
     parser.add_argument('--init_dir', default="./ckpts/init/", type=str, help="directory for saving the initial surfaces")
-    parser.add_argument('--parc_init_dir', default="./ckpts/parc_init/", type=str, help="directory for saving the initial surfaces")
+    parser.add_argument('--parc_init_dir', default=None, type=str, help="directory for saving the initial surfaces")
     parser.add_argument('--result_dir', default="./ckpts/result/", type=str, help="directory for saving the predicted surfaces")
 
 
