@@ -1,0 +1,3 @@
+Hemisphere,average_dice_score,stdev_dice,Vertex Mapping,Training Set,Testing Ground Truth,framework
+lh,0.8544752539253484,0.0567300790516926,asymmetric,cortexode,freesurfer,example_framework_csrvc
+rh,0.8494120184478882,0.0610091137387972,asymmetric,cortexode,freesurfer,example_framework_csrvc

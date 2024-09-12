@@ -1,0 +1,3 @@
+gnn_layers,surf_hemi,surf_type,average_dice_score,stdev_dice,count
+10,left hemisphere,pial,0.9188043315616632,0.013063076200074946,99
+12,right hemisphere,pial,0.9153768290713423,0.019958831863739195,99

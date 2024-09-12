@@ -1,0 +1,13 @@
+framework,gnn_layers,surf_hemi,surf_type,average_dice_score,stdev_dice,count
+assym_csrvc,10,left hemisphere,pial,0.9188043315616632,0.0130630762000749,99
+assym_csrvc,12,right hemisphere,pial,0.9153768290713424,0.0199588318637391,99
+assymtoassym_csrvc,10,left hemisphere,pial,0.8799246678859418,0.015271668411191,99
+assymtoassym_csrvc,12,right hemisphere,pial,0.879282788680484,0.0199563301723446,99
+assymtoassymindist_csrvc,10,left hemisphere,pial,0.8767828771594778,0.0153167495509701,99
+assymtoassymindist_csrvc,12,right hemisphere,pial,0.8736281979312626,0.0203551807452597,99
+sym_csrvc,12,left hemisphere,pial,0.9204749035815584,0.0128503665799898,99
+sym_csrvc,12,right hemisphere,pial,0.918495111085502,0.0189090614277453,99
+symtoassym_csrvc,12,left hemisphere,pial,0.8783446274015849,0.0150787979481322,99
+symtoassym_csrvc,12,right hemisphere,pial,0.8786651721120845,0.0190288846092032,99
+symtoassymindist_csrvc,12,left hemisphere,pial,0.8747090787514176,0.015049308552442,99
+symtoassymindist_csrvc,12,right hemisphere,pial,0.8731742250427978,0.0193063841908204,99

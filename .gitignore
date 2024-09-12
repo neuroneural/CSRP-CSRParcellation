@@ -19,3 +19,12 @@ traincorrespondence.py
 train_gaussian_selfsupervised.py
 alignment/
 mwremoved/
+
+# Ignore leaf directories under wacvanalysis
+
+wacvanalysis/frameworks/csrf/alignment_rp/
+wacvanalysis/frameworks/cortexode/result/
+wacvanalysis/frameworks/cortexode/alignment/
+wacvanalysis/frameworks/fastsurfer/result/
+wacvanalysis/frameworks/freesurfer/mwremoved/
+

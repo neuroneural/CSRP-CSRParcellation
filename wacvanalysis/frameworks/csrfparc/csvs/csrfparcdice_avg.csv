@@ -1,0 +1,5 @@
+surf_hemi,left hemisphere,right hemisphere
+surf_type,pial,pial
+gnn_layers,,
+10,0.8918372922023609,
+12,0.8911762032448536,0.889770387320579
