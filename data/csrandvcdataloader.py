@@ -15,14 +15,17 @@ class BrainData():
     """
     Data class to hold all necessary components for training.
     """
-    def __init__(self, volume, v_in, v_gt, f_in, f_gt, labels, aff=None):
-        self.v_in = torch.Tensor(v_in)
-        self.f_in = torch.LongTensor(f_in)
+    def __init__(self, volume, v_in, v_gt, f_in, f_gt, labels, aff=None, ctab=None, nearest_labels=None, mask=None):
+        self.volume = torch.Tensor(volume)
         self.v_gt = torch.Tensor(v_gt)
-        self.f_gt = torch.LongTensor(f_gt)
-        self.volume = torch.from_numpy(volume)
-        self.labels = torch.from_numpy(labels.astype(np.int64))
+        self.f_gt = torch.from_numpy(f_gt.astype(np.float32)).long()  # Convert to float32 then to long to handle endian issues
+        self.labels = torch.from_numpy(labels.astype(np.float32)).long()  # Convert to float32 then to long to handle endian issues
         self.aff = aff
+        self.ctab = torch.from_numpy(ctab.astype(np.float32)).long() if ctab is not None else None  # Convert ctab if provided
+        self.v_in = torch.Tensor(v_in) if v_in is not None else None
+        self.f_in = torch.from_numpy(f_in.astype(np.float32)).long() if f_in is not None else None  # Convert to float32 then to long to handle endian issues
+        self.nearest_labels = torch.from_numpy(nearest_labels.astype(np.float32)).long() if nearest_labels is not None else None
+        self.mask = torch.Tensor(mask) if mask is not None else None
 
     def getBrain(self):
         return self.volume, self.v_in, self.v_gt, self.f_in, self.f_gt, self.labels, self.aff
@@ -52,7 +55,7 @@ class BrainDataset(Dataset):
         subid = self.subject_list[idx]
 
         # Load data for the subject identified by `subid`
-        brain_arr, v_in, v_gt, f_in, f_gt, labels, aff = self._load_surf_data_for_subject(
+        brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab = self._load_surf_data_for_subject(
             subid, self.config, self.data_usage
         )
 
@@ -94,7 +97,7 @@ class BrainDataset(Dataset):
         if labels is None or len(labels) != v_gt.shape[0]:
             raise ValueError(f"Labels not loaded correctly for subject {subid}")
 
-        return brain_arr, v_in, v_gt, f_in, f_gt, labels, aff
+        return brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab
 
     def _load_ground_truth_surface(self, data_dir, subid, data_name, surf_hemi, surf_type, aff):
         if data_name == 'hcp':
@@ -208,6 +211,8 @@ class BrainDataset(Dataset):
             labels, ctab, _ = nib.freesurfer.io.read_annot(annot_file)
             # Process labels if necessary
             labels[labels == -1] = 4  # Non-cortex label
+            labels = labels.astype(np.float32)  # Convert labels to float32 to handle endian issues
+            ctab = ctab.astype(np.float32)  # Convert ctab to float32 to handle endian issues
             return labels, ctab
         except Exception as e:
             print(f"Error loading vertex labels for subject {subid}: {e}")

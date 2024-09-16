@@ -22,6 +22,31 @@ import torch.multiprocessing as mp
 
 from scipy.spatial import cKDTree
 
+
+
+def compute_dice(pred, target, num_classes, exclude_classes=[]):
+    dice_scores = []
+    pred = pred.cpu().numpy()
+    target = target.cpu().numpy()
+    
+    for i in range(num_classes):
+        if i in exclude_classes:
+            continue
+        
+        pred_i = (pred == i)
+        target_i = (target == i)
+        
+        intersection = np.sum(pred_i & target_i)
+        union = np.sum(pred_i) + np.sum(target_i)
+        
+        if union == 0:
+            dice_score = 1.0
+        else:
+            dice_score = 2. * intersection / union
+        dice_scores.append(dice_score)
+        
+    return np.mean(dice_scores)
+
 def train_surf(config):
     """
     Training CSRVCV2 for cortical surface reconstruction and classification.
@@ -170,15 +195,18 @@ def train_surf(config):
                 v_gt_np = v_gt.squeeze(0).cpu().numpy()
 
                 # Build KDTree from ground truth pial surface vertices
-                kd_tree = cKDTree(v_gt_np)
+                if surf_type == 'wm':
+                    kd_tree = cKDTree(v_gt_np)
 
-                # For each predicted vertex, find nearest ground truth vertex
-                distances, indices = kd_tree.query(v_out_np)
+                    # For each predicted vertex, find nearest ground truth vertex
+                    distances, indices = kd_tree.query(v_out_np)
 
-                # Obtain labels from ground truth labels
-                labels_np = labels.squeeze(0).cpu().numpy()
-                predicted_labels = labels_np[indices]
-
+                    # Obtain labels from ground truth labels
+                    labels_np = labels.squeeze(0).cpu().numpy()
+                    predicted_labels = labels_np[indices]
+                else:
+                    predicted_labels = labels.squeeze(0).cpu().numpy()#correspondence can be exploited. 
+                
                 # Convert labels to tensor
                 predicted_labels = torch.from_numpy(predicted_labels).long().to(device)
 
@@ -201,7 +229,10 @@ def train_surf(config):
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             logging.info('-------------validation--------------')
             with torch.no_grad():
-                valid_error = []
+                total_valid_error = []
+                recon_valid_error = []
+                dice_valid_error = []
+                classification_valid_error= []
                 for idx, data in enumerate(validloader):
                     volume_in, v_in, v_gt, f_in, f_gt, labels = data
 
@@ -230,17 +261,27 @@ def train_surf(config):
                         reconstruction_loss = mse_loss
 
                     total_valid_loss = reconstruction_loss.item()
-                    valid_error.append(total_valid_loss)
-
+                    recon_valid_loss = reconstruction_loss.item()
+                    dice_score = -1.0 # unless calculated make negative since higher is better. 
                     if compute_classification_loss:
                         # Perform KDTree nearest neighbor search to assign labels
                         v_out_np = v_out.squeeze(0).detach().cpu().numpy()
                         v_gt_np = v_gt.squeeze(0).cpu().numpy()
                         labels_np = labels.squeeze(0).cpu().numpy()
 
-                        kd_tree = cKDTree(v_gt_np)
-                        distances, indices = kd_tree.query(v_out_np)
-                        predicted_labels = labels_np[indices]
+                        if surf_type == 'wm':
+                            kd_tree = cKDTree(v_gt_np)
+
+                            # For each predicted vertex, find nearest ground truth vertex
+                            distances, indices = kd_tree.query(v_out_np)
+
+                            # Obtain labels from ground truth labels
+                            labels_np = labels.squeeze(0).cpu().numpy()
+                            predicted_labels = labels_np[indices]
+                        else:
+                            predicted_labels = labels.squeeze(0).cpu.numpy()#correspondence can be exploited. 
+                    
+                        # Convert labels to tensor
                         predicted_labels = torch.from_numpy(predicted_labels).long().to(device)
 
                         # Retrieve classification logits
@@ -249,10 +290,21 @@ def train_surf(config):
 
                         # Compute classification loss
                         classification_loss = nn.NLLLoss()(class_logits, predicted_labels.unsqueeze(0))
+                        exclude_classes = [4] if config.atlas == 'aparc'or config.atlas == 'DKTatlas40' else []
+                        predicted_classes = torch.argmax(class_logits, dim=1)
+                        dice_score = compute_dice(predicted_classes, predicted_labels, num_classes, exclude_classes)
 
                         total_valid_loss += classification_loss_weight * classification_loss.item()
+                        dice_valid_error.append(dice_score)
+                        classification_valid_error.append(classification_loss_weight * classification_loss.item())
+                    total_valid_error.append(total_valid_loss)
+                    recon_valid_error.append(recon_valid_loss)
+                    
 
-                logging.info('epoch:{}, validation error:{}'.format(epoch, np.mean(valid_error)))
+                logging.info('epoch:{}, total validation error:{}'.format(epoch, np.mean(total_valid_error)))
+                logging.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
+                logging.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
+                logging.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
                 logging.info('-------------------------------------')
 
         # Save model checkpoints
