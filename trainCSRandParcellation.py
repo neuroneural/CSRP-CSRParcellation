@@ -158,12 +158,13 @@ def train_surf(config):
             optimizer.zero_grad()
 
             # Move data to device
+            # Move data to device and ensure float dtype
             volume_in = volume_in.to(device).float()
-            v_in = v_in.to(device)
-            v_gt = v_gt.to(device)
-            f_in = f_in.to(device)
-            f_gt = f_gt.to(device)
-            labels = labels.to(device)
+            v_in = v_in.to(device).float()
+            v_gt = v_gt.to(device).float()
+            f_in = f_in.to(device).long()
+            f_gt = f_gt.to(device).long()
+            labels = labels.to(device).long()
 
             # Set initial state and data
             cortexode.set_data(v_in, volume_in, f=f_in)
@@ -208,14 +209,18 @@ def train_surf(config):
                     predicted_labels = labels.squeeze(0).cpu().numpy()#correspondence can be exploited. 
                 
                 # Convert labels to tensor
+                #predicted_labels = torch.from_numpy(predicted_labels).long().to(device)
+
+                # Retrieve classification logits
+                # Convert labels to tensor
                 predicted_labels = torch.from_numpy(predicted_labels).long().to(device)
 
                 # Retrieve classification logits
                 class_logits = cortexode.get_class_logits()
-                class_logits = class_logits.unsqueeze(0)  # Add batch dimension if needed
-
+                # Remove the unsqueeze(0) as it's causing the size mismatch
                 # Compute classification loss
-                classification_loss = nn.NLLLoss()(class_logits, predicted_labels.unsqueeze(0))
+                print(class_logits.shape,predicted_labels.shape)
+                classification_loss = nn.NLLLoss()(class_logits, predicted_labels)
 
                 # Total Loss (add classification loss)
                 total_loss += classification_loss_weight * classification_loss
@@ -236,12 +241,14 @@ def train_surf(config):
                 for idx, data in enumerate(validloader):
                     volume_in, v_in, v_gt, f_in, f_gt, labels = data
 
+                    # Move data to device and ensure float dtype
                     volume_in = volume_in.to(device).float()
-                    v_in = v_in.to(device)
-                    v_gt = v_gt.to(device)
-                    f_in = f_in.to(device)
-                    f_gt = f_gt.to(device)
-                    labels = labels.to(device)
+                    v_in = v_in.to(device).float()
+                    v_gt = v_gt.to(device).float()
+                    f_in = f_in.to(device).long()
+                    f_gt = f_gt.to(device).long()
+                    labels = labels.to(device).long()
+
 
                     # Set initial state and data
                     cortexode.set_data(v_in, volume_in, f=f_in)
@@ -279,17 +286,17 @@ def train_surf(config):
                             labels_np = labels.squeeze(0).cpu().numpy()
                             predicted_labels = labels_np[indices]
                         else:
-                            predicted_labels = labels.squeeze(0).cpu.numpy()#correspondence can be exploited. 
+                            predicted_labels = labels.squeeze(0).cpu().numpy()#correspondence can be exploited. 
                     
                         # Convert labels to tensor
                         predicted_labels = torch.from_numpy(predicted_labels).long().to(device)
 
                         # Retrieve classification logits
                         class_logits = cortexode.get_class_logits()
-                        class_logits = class_logits.unsqueeze(0)  # Add batch dimension if needed
-
+                        # Remove the unsqueeze(0) as it's causing the size mismatch
                         # Compute classification loss
-                        classification_loss = nn.NLLLoss()(class_logits, predicted_labels.unsqueeze(0))
+                        print('val', class_logits.shape,predicted_labels.shape)
+                        classification_loss = nn.NLLLoss()(class_logits, predicted_labels)
                         exclude_classes = [4] if config.atlas == 'aparc'or config.atlas == 'DKTatlas40' else []
                         predicted_classes = torch.argmax(class_logits, dim=1)
                         dice_score = compute_dice(predicted_classes, predicted_labels, num_classes, exclude_classes)

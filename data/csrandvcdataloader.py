@@ -59,7 +59,8 @@ class BrainDataset(Dataset):
             subid, self.config, self.data_usage
         )
 
-        return brain_arr, v_in, v_gt, f_in, f_gt, labels
+        return torch.tensor(brain_arr).float(), torch.tensor(v_in).float(), torch.tensor(v_gt).float(), torch.tensor(f_in).long(), torch.tensor(f_gt).long(), torch.tensor(labels).long()
+
 
     def _load_surf_data_for_subject(self, subid, config, data_usage):
         data_dir = os.path.join(config.data_dir, data_usage)
