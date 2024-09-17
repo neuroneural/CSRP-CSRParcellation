@@ -80,7 +80,7 @@ python trainCSRandParcellation.py \
     --init_dir '/cortexode/ckpts/isbi_gnn_1/init/' \
     --data_name 'hcp' \
     --surf_hemi 'lh' \
-    --surf_type 'gm' \
+    --surf_type 'wm' \
     --n_epochs 401 \
     --start_epoch 1 \
     --tag 'vc' \

@@ -224,6 +224,7 @@ class BrainDataset(Dataset):
         if surf_type == 'wm':
             # Load initial mesh from init_dir
             init_mesh_path = os.path.join(init_dir, f'init_{data_name}_{surf_hemi}_{subid}.obj')
+            # print('init_mesh_path',init_mesh_path)
             if not os.path.isfile(init_mesh_path):
                 raise FileNotFoundError(f"Initial mesh not found for subject {subid}")
             mesh_in = trimesh.load(init_mesh_path)

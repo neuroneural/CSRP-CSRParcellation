@@ -176,7 +176,7 @@ def train_surf(config):
             # Reconstruction Loss
             if surf_type == 'wm':
                 # Chamfer Distance Loss on vertices
-                chamfer_loss = 1e3 * chamfer_distance(v_out.squeeze(0), v_gt.squeeze(0))[0]
+                chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
                 reconstruction_loss = chamfer_loss
             elif surf_type == 'gm':
                 # MSE Loss between vertex positions
@@ -260,7 +260,8 @@ def train_surf(config):
                     # Reconstruction Loss
                     if surf_type == 'wm':
                         # Chamfer Distance Loss on vertices
-                        chamfer_loss = 1e3 * chamfer_distance(v_out.squeeze(0), v_gt.squeeze(0))[0]
+                        # chamfer_loss = 1e3 * chamfer_distance(v_out.squeeze(0), v_gt.squeeze(0))[0]
+                        chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
                         reconstruction_loss = chamfer_loss
                     elif surf_type == 'gm':
                         # MSE Loss between vertex positions

@@ -5,7 +5,7 @@
 #SBATCH -p qTRDGPUH
 #SBATCH --gres=gpu:A100:1
 #SBATCH -t 5-00:00
-#SBATCH -J csrvc_training
+#SBATCH -J csrvclh
 #SBATCH -e jobs/error%A_%a.err
 #SBATCH -o jobs/out%A_%a.out
 #SBATCH -A psy53c17
@@ -24,6 +24,22 @@ singularity exec --nv \
 /data/users2/washbee/speedrun/:/speedrun,\
 /data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
     /data/users2/washbee/containers/csrf_sandbox/ \
-    /cortexode/singularity/isbi/train_csrvcv2_lhgm.sh $SLURM_ARRAY_TASK_ID
+    /cortexode/singularity/isbi/train_csrvcv2_lhgm.sh $SLURM_ARRAY_TASK_ID &
+
+pid1=$!  # Store the process ID of the second process
+
+singularity exec --nv \
+    --bind /data,\
+/data/users2/washbee/speedrun/:/speedrun,\
+/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
+    /data/users2/washbee/containers/csrf_sandbox/ \
+    /cortexode/singularity/isbi/train_csrvcv2_lhwm.sh $SLURM_ARRAY_TASK_ID &
+
+pid2=$!  # Store the process ID of the second process
+
+wait $pid1
+wait $pid2
+
+
 
 sleep 10s
