@@ -64,6 +64,7 @@ fi
 # Print the configuration
 echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, GAT Heads $gat_head"
 #--data_dir '/speedrun/cortexode-data-rp/' \
+#--data_dir '/speedrun/wacv-data-dev/' \
     
 # Execute Python script with parameters
 python trainCSRandParcellation.py \
@@ -74,7 +75,7 @@ python trainCSRandParcellation.py \
     --gnn_layers $gnn_layer \
     --gat_heads $gat_head \
     --train_type 'surfandseg' \
-    --data_dir '/speedrun/wacv-data-dev/' \
+    --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi_gnn_0/model/' \
     --data_name 'hcp' \
     --surf_hemi 'lh' \
@@ -83,5 +84,5 @@ python trainCSRandParcellation.py \
     --start_epoch 1 \
     --tag 'vc' \
     --device 'gpu' \
-    --classification_loss_threshold 1.04 \
-    --classification_loss_weight 1.0
+    --classification_loss_threshold .04 \
+    --classification_loss_weight .1
