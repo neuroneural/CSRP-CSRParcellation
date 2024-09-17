@@ -1,185 +1,296 @@
-import os
-import nibabel as nib
-import trimesh
-import numpy as np
-from tqdm import tqdm
-from scipy.ndimage import distance_transform_cdt as cdt
-from skimage.measure import marching_cubes
-from skimage.measure import label as compute_cc
-from skimage.filters import gaussian
-
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torchdiffeq import odeint_adjoint as odeint
+from torch.utils.data import Dataset
+import re
+import os
+import numpy as np
+import nibabel as nib
+from data.preprocess import process_volume, process_surface
+from pytorch3d.structures import Meshes
+import trimesh
 
-from data.preprocess import process_volume, process_surface, process_surface_inverse
+# **Add the necessary imports for smoothing and normals**
 from util.mesh import laplacian_smooth, compute_normal
-from util.tca import topology
-from model.net import Unet
-from model.csrvcv2 import CSRVCV2  # Replaces CortexODE
-from config import load_config
-from data.csrandvcdataloader import SegDataset, BrainDataset
-from torch.utils.data import DataLoader
 
-# Initialize topology correction
-topo_correct = topology()
 
-def seg2surf(seg, data_name='hcp', sigma=0.5, alpha=16, level=0.8, n_smooth=2):
+class SegData():
+    def __init__(self, vol, seg):
+        self.vol = torch.Tensor(vol)
+        self.seg = torch.Tensor(seg)
+
+        vol = []
+        seg = []
+
+        
+class SegDataset(Dataset):
+    def __init__(self, data):
+        super(Dataset, self).__init__()
+        self.data = data
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, i):
+        brain = self.data[i]
+        return brain.vol, brain.seg
+    
+    
+def load_seg_data(config, data_usage='train'):
     """
-    Extract the surface based on the segmentation.
+    data_dir: the directory of your dataset
+    data_name: [hcp, adni, dhcp, ...]
+    data_usage: [train, valid, test]
     """
-    # Connected components checking
-    cc, nc = compute_cc(seg, connectivity=2, return_num=True)
-    cc_id = 1 + np.argmax(np.array([np.count_nonzero(cc == i) for i in range(1, nc+1)]))
-    seg = (cc == cc_id).astype(np.float64)
-
-    # Generate signed distance function
-    sdf = -cdt(seg) + cdt(1 - seg)
-    sdf = sdf.astype(float)
-    sdf = gaussian(sdf, sigma=sigma)
-
-    # Topology correction
-    sdf_topo = topo_correct.apply(sdf, threshold=alpha)
-
-    # Marching cubes
-    v_mc, f_mc, _, _ = marching_cubes(-sdf_topo, level=-level, method='lorensen')
-    v_mc = v_mc[:, [2, 1, 0]].copy()
-    f_mc = f_mc.copy()
-    D1, D2, D3 = sdf_topo.shape
-    D = max(D1, D2, D3)
-    v_mc = (2 * v_mc - [D3, D2, D1]) / D  # Rescale to [-1,1]
-
-    # Bias correction
-    if data_name == 'hcp':
-        v_mc = v_mc + [0.0090, 0.0058, 0.0088]
-    elif data_name == 'adni':
-        v_mc = v_mc + [0.0090, 0.0000, 0.0095]
-
-    # Mesh smoothing
-    v_mc = torch.Tensor(v_mc).unsqueeze(0).to(device)
-    f_mc = torch.LongTensor(f_mc).unsqueeze(0).to(device)
-    for j in range(n_smooth):
-        v_mc = laplacian_smooth(v_mc, f_mc, 'uniform', lambd=1)
-    v_mc = v_mc[0].cpu().numpy()
-    f_mc = f_mc[0].cpu().numpy()
-
-    return v_mc, f_mc
-
-def get_ctab_from_dataset(config, data_usage='test'):
-    # Initialize the dataset to extract ctab
-    dataset = BrainDataset(config=config, data_usage=data_usage, affCtab=True)
-    brain_data = dataset[0]  # Load the first subject
-    ctab = brain_data[-1]  # Extract ctab (assumed to be the last returned item)
-    return ctab
-
-if __name__ == '__main__':
-    # Load configuration
-    config = load_config()
-    test_type = config.test_type  # initial surface / prediction / evaluation
-    data_dir = config.data_dir
-    model_dir = config.model_dir
-    init_dir = config.init_dir
-    result_dir = config.result_dir
+    
     data_name = config.data_name
-    surf_hemi = config.surf_hemi
-    device = config.device
-    tag = config.tag
+    data_dir = config.data_dir
+    data_dir = data_dir + data_usage + '/'
 
-    C = config.dim_h
-    K = config.kernel_size
-    Q = config.n_scale
-    step_size = config.step_size
-    solver = config.solver
-    n_inflate = config.n_inflate
-    rho = config.rho
+    subject_list = sorted(os.listdir(data_dir))
+    data_list = []
 
-    # Load segmentation model
-    segnet = Unet(c_in=1, c_out=3).to(device)
-    segnet.load_state_dict(torch.load(model_dir + 'model_seg_' + data_name + '_' + tag + '.pt'))
+    for i in tqdm(range(len(subject_list))):
+        subid = subject_list[i]
 
-    # Load deformation model (CSRVCV2)
-    if test_type in ['pred', 'eval']:
-        if surf_hemi != 'none':
-            T = torch.Tensor([0, 1]).to(device)
-            csrvcv2 = CSRVCV2(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
-            csrvcv2.load_state_dict(torch.load(model_dir + 'model_csrvcv2_' + data_name + '_' + surf_hemi + '_' + tag + '.pt', map_location=device))
-            csrvcv2.eval()
+        if data_name == 'hcp' or data_name == 'adni':
+            brain = nib.load(data_dir+subid+'/mri/orig.mgz')
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 255.).astype(np.float32)
+            brain_arr = process_volume(brain_arr, data_name)
 
-    # Obtain ctab for annotations
-    ctab = get_ctab_from_dataset(config)
+            seg = nib.load(data_dir+subid+'/mri/ribbon.mgz')
+            seg_arr = seg.get_fdata()
+            seg_arr = process_volume(seg_arr, data_name)[0]
+            seg_left = (seg_arr == 2).astype(int)    # left wm
+            seg_right = (seg_arr == 41).astype(int)  # right wm
 
-    # Start testing
-    testset = SegDataset(config=config, data_usage='test')
-    testloader = DataLoader(testset, batch_size=1, shuffle=True, num_workers=4)
+            seg_arr = np.zeros_like(seg_left, dtype=int)  # final label
+            seg_arr += 1 * seg_left
+            seg_arr += 2 * seg_right
+    
+        elif data_name == 'dhcp':
+            brain = nib.load(data_dir+subid+'/'+subid+'_T2w.nii.gz')
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 20).astype(np.float32)
+            brain_arr = process_volume(brain_arr, data_name)
+            
+            # wm_label is the generated segmentation by projecting surface into the volume
+            seg_arr = np.load(data_dir+subid+'/'+subid+'_wm_label.npy', allow_pickle=True)
+            seg_arr = process_volume(seg_arr, data_name)[0]
+            
+        segdata = SegData(vol=brain_arr, seg=seg_arr)
+        # add to data list
+        data_list.append(segdata)
 
-    for idx, data in enumerate(testloader):
-        volume_in, seg_gt, subid = data
-        subid = str(subid[0])
-        volume_in = volume_in.to(device)
+    # make dataset
+    dataset = SegDataset(data_list)
+    
+    return dataset
 
-        # Predict segmentation
-        with torch.no_grad():
-            seg_out = segnet(volume_in)
-            seg_pred = torch.argmax(seg_out, dim=1)[0]
+class BrainData():
+    """
+    Data class to hold all necessary components for training.
+    """
+    def __init__(self, volume, v_in, v_gt, f_in, f_gt, labels, aff=None, ctab=None, nearest_labels=None, mask=None):
+        self.volume = torch.Tensor(volume)
+        self.v_gt = torch.Tensor(v_gt)
+        self.f_gt = torch.from_numpy(f_gt.astype(np.float32)).long()  # Convert to float32 then to long to handle endian issues
+        self.labels = torch.from_numpy(labels.astype(np.float32)).long()  # Convert to float32 then to long to handle endian issues
+        self.aff = aff
+        self.ctab = torch.from_numpy(ctab.astype(np.float32)).long() if ctab is not None else None  # Convert ctab if provided
+        self.v_in = torch.Tensor(v_in) if v_in is not None else None
+        self.f_in = torch.from_numpy(f_in.astype(np.float32)).long() if f_in is not None else None  # Convert to float32 then to long to handle endian issues
+        self.nearest_labels = torch.from_numpy(nearest_labels.astype(np.float32)).long() if nearest_labels is not None else None
+        self.mask = torch.Tensor(mask) if mask is not None else None
 
-            if surf_hemi == 'lh':
-                seg = (seg_pred == 1).cpu().numpy()
-            elif surf_hemi == 'rh':
-                seg = (seg_pred == 2).cpu().numpy()
-            elif surf_hemi == 'none':
-                print('Skipping surface creation, evaluating segmentation only')
-                exit()
+    def getBrain(self):
+        return self.volume, self.v_in, self.v_gt, self.f_in, self.f_gt, self.labels, self.aff
 
-        # Extract initial surface
-        v_in, f_in = seg2surf(seg, data_name, sigma=0.5, alpha=16, level=0.8, n_smooth=2)
+class BrainDataset(Dataset):
+    def __init__(self, config, data_usage='train',affCtab=False):
+        """
+        Initializes the dataset with configurations and prepares
+        a list of subject IDs for lazy loading.
+        """
+        self.data_dir = os.path.join(config.data_dir, data_usage)
+        self.subject_list = sorted([
+            item for item in os.listdir(self.data_dir)
+            if os.path.isdir(os.path.join(self.data_dir, item))
+        ])
+        self.config = config
+        self.data_usage = data_usage
+        self.mse_threshold = config.mse_threshold
+        self.surf_hemi = config.surf_hemi
+        self.surf_type = config.surf_type
+        self.device = config.device
+        self.affCtab = affCtab
+    def __len__(self):
+        return len(self.subject_list)
 
-        # Save initial surface
-        if test_type == 'init':
-            mesh_init = trimesh.Trimesh(v_in, f_in)
-            mesh_init.export(init_dir + 'init_' + data_name + '_' + surf_hemi + '_' + subid + '.obj')
+    def __getitem__(self, idx):
+        subid = self.subject_list[idx]
 
-        # Predict WM surface
-        if test_type in ['pred', 'eval']:
-            with torch.no_grad():
-                v_in = torch.Tensor(v_in).unsqueeze(0).to(device)
-                f_in = torch.LongTensor(f_in).unsqueeze(0).to(device)
+        # Load data for the subject identified by `subid`
+        brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab = self._load_surf_data_for_subject(
+            subid, self.config, self.data_usage
+        )
+        if not self.affCtab:
+            return torch.tensor(brain_arr).float(), torch.tensor(v_in).float(), torch.tensor(v_gt).float(), torch.tensor(f_in).long(), torch.tensor(f_gt).long(), torch.tensor(labels).long()
+        else:
+            return torch.tensor(brain_arr).float(), torch.tensor(v_in).float(), torch.tensor(v_gt).float(), torch.tensor(f_in).long(), torch.tensor(f_gt).long(), torch.tensor(labels).long(), torch.tensor(aff).float(), torch.tensor(ctab).long()
 
-                # WM surface prediction and class prediction using CSRVCV2
-                csrvcv2.set_data(v_in, volume_in)
-                v_wm_pred, class_pred = odeint(csrvcv2, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
+    def _load_surf_data_for_subject(self, subid, config, data_usage):
+        data_dir = os.path.join(config.data_dir, data_usage)
+        data_name = config.data_name
+        init_dir = os.path.join(config.init_dir, data_usage)
+        surf_type = config.surf_type
+        surf_hemi = config.surf_hemi
+        device = self.device
 
-                # Inflate and smooth to create initial GM surface
-                v_gm_in = v_wm_pred.clone()
-                for i in range(2):
-                    v_gm_in = laplacian_smooth(v_gm_in, f_in, lambd=1.0)
-                    n_in = compute_normal(v_gm_in, f_in)
-                    v_gm_in += 0.002 * n_in
+        # Load MRI volume
+        if data_name in ['hcp', 'adni']:
+            brain = nib.load(os.path.join(data_dir, subid, 'mri', 'orig.mgz'))
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 255.).astype(np.float32)
+            aff = brain.affine
+        elif data_name == 'dhcp':
+            brain = nib.load(os.path.join(data_dir, subid, f'{subid}_T2w.nii.gz'))
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 20).astype(np.float32)
+            aff = brain.affine
+        else:
+            raise ValueError(f"Unsupported data_name: {data_name}")
+        brain_arr = process_volume(brain_arr, data_name)
 
-                # GM surface prediction using CSRVCV2
-                csrvcv2.set_data(v_gm_in, volume_in)
-                v_gm_pred, _ = odeint(csrvcv2, v_gm_in, t=T, method=solver, options=dict(step_size=step_size / 2))[-1]
+        # Load ground truth surface
+        v_gt, f_gt = self._load_ground_truth_surface(data_dir, subid, data_name, surf_hemi, surf_type, aff)
 
-            # Convert tensors to numpy arrays
-            v_wm_pred = v_wm_pred[0].cpu().numpy()
-            f_wm_pred = f_in[0].cpu().numpy()
-            v_gm_pred = v_gm_pred[0].cpu().numpy()
-            f_gm_pred = f_in[0].cpu().numpy()
-            class_pred = torch.argmax(class_pred, dim=1).cpu().numpy()
+        # Load input surface
+        v_in, f_in = self._load_input_surface(data_dir, subid, data_name, init_dir, surf_hemi, surf_type, aff)
 
-            # Map the surface coordinates from [-1, 1] to their original space
-            v_wm_pred, f_wm_pred = process_surface_inverse(v_wm_pred, f_wm_pred, data_name)
-            v_gm_pred, f_gm_pred = process_surface_inverse(v_gm_pred, f_gm_pred, data_name)
+        # Load labels
+        labels, ctab = self._load_vertex_labels(data_dir, subid, config.atlas, surf_hemi)
 
-        # Save predicted surfaces in FreeSurfer format
-        if test_type == 'pred':
-            # Save WM surface
-            nib.freesurfer.io.write_geometry(result_dir + data_name + '_' + surf_hemi + '_' + subid + '.white',
-                                             v_wm_pred, f_wm_pred)
-            # Save GM surface
-            nib.freesurfer.io.write_geometry(result_dir + data_name + '_' + surf_hemi + '_' + subid + '.pial',
-                                             v_gm_pred, f_gm_pred)
+        # Ensure labels are valid
+        if labels is None or len(labels) != v_gt.shape[0]:
+            raise ValueError(f"Labels not loaded correctly for subject {subid}")
 
-            # Save the annotations with class predictions
-            nib.freesurfer.write_annot(result_dir + data_name + '_' + surf_hemi + '_' + subid + '.annot',
-                                       class_pred, ctab.cpu().numpy(), None)
+        return brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab
+
+    def _load_ground_truth_surface(self, data_dir, subid, data_name, surf_hemi, surf_type, aff):
+        if data_name == 'hcp':
+            if surf_type == 'wm':
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                    os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.white.deformed')
+                )
+            elif surf_type == 'gm':
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                    os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial.deformed')
+                )
+            else:
+                raise ValueError(f"Unsupported surf_type: {surf_type}")
+        elif data_name == 'adni':
+            if surf_type == 'wm':
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                    os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.white')
+                )
+            elif surf_type == 'gm':
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                    os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial')
+                )
+            else:
+                raise ValueError(f"Unsupported surf_type: {surf_type}")
+        elif data_name == 'dhcp':
+            if surf_type == 'wm':
+                surf_gt = nib.load(
+                    os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_wm.surf.gii')
+                )
+            elif surf_type == 'gm':
+                surf_gt = nib.load(
+                    os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_pial.surf.gii')
+                )
+            else:
+                raise ValueError(f"Unsupported surf_type: {surf_type}")
+            v_gt, f_gt = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
+            # Apply affine transformation
+            v_tmp = np.ones([v_gt.shape[0], 4])
+            v_tmp[:, :3] = v_gt
+            v_gt = v_tmp.dot(np.linalg.inv(aff).T)[:, :3]
+        else:
+            raise ValueError(f"Unsupported data_name: {data_name}")
+        v_gt, f_gt = process_surface(v_gt, f_gt, data_name)
+        return v_gt, f_gt
+
+    def _load_input_surface(self, data_dir, subid, data_name, init_dir, surf_hemi, surf_type, aff):
+        if surf_type == 'wm':
+            # Load initial mesh from init_dir
+            init_mesh_path = os.path.join(init_dir, f'init_{data_name}_{surf_hemi}_{subid}.obj')
+            if not os.path.isfile(init_mesh_path):
+                raise FileNotFoundError(f"Initial mesh not found for subject {subid}")
+            mesh_in = trimesh.load(init_mesh_path)
+            v_in, f_in = mesh_in.vertices, mesh_in.faces
+        elif surf_type == 'gm':
+            # Use white matter surface as input
+            if data_name == 'hcp':
+                v_in, f_in = nib.freesurfer.io.read_geometry(
+                    os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.white.deformed')
+                )
+            elif data_name == 'adni':
+                v_in, f_in = nib.freesurfer.io.read_geometry(
+                    os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.white')
+                )
+            elif data_name == 'dhcp':
+                surf_in = nib.load(
+                    os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_wm.surf.gii')
+                )
+                v_in, f_in = surf_in.agg_data('pointset'), surf_in.agg_data('triangle')
+                # Apply affine transformation
+                v_tmp = np.ones([v_in.shape[0], 4])
+                v_tmp[:, :3] = v_in
+                v_in = v_tmp.dot(np.linalg.inv(aff).T)[:, :3]
+            else:
+                raise ValueError(f"Unsupported data_name: {data_name}")
+            v_in, f_in = process_surface(v_in, f_in, data_name)
+
+            # **Perform inflation and smoothing**
+            v_in, f_in = self._inflate_and_smooth(v_in, f_in)
+        else:
+            raise ValueError(f"Unsupported surf_type: {surf_type}")
+        return v_in, f_in
+
+    def _inflate_and_smooth(self, v_in, f_in):
+        n_inflate = self.config.n_inflate
+        rho = self.config.rho
+        lambd = self.config.lambd
+        device = self.device
+
+        v_in_tensor = torch.Tensor(v_in).unsqueeze(0).to(device)
+        f_in_tensor = torch.LongTensor(f_in).unsqueeze(0).to(device)
+        for _ in range(n_inflate):
+            # **Apply Laplacian smoothing**
+            v_in_tensor = laplacian_smooth(v_in_tensor, f_in_tensor, lambd=lambd)
+            # **Compute vertex normals**
+            n_in = compute_normal(v_in_tensor, f_in_tensor)
+            # **Inflate along the normal direction**
+            v_in_tensor += rho * n_in
+        v_in = v_in_tensor.cpu().numpy()[0]
+        f_in = f_in_tensor.cpu().numpy()[0]
+        return v_in, f_in
+
+    def _load_vertex_labels(self, data_dir, subid, atlas, surf_hemi):
+        atlas_dir = os.path.join(data_dir, subid, 'label')
+        try:
+            if atlas == 'aparc':
+                annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
+            elif atlas == 'DKTatlas40':
+                annot_file = os.path.join(atlas_dir, f'{surf_hemi}.aparc.{atlas}.annot')
+            else:
+                raise ValueError("Label mapping not supported yet.")
+            labels, ctab, _ = nib.freesurfer.io.read_annot(annot_file)
+            # Process labels if necessary
+            labels[labels == -1] = 4  # Non-cortex label
+            labels = labels.astype(np.float32)  # Convert labels to float32 to handle endian issues
+            ctab = ctab.astype(np.float32)  # Convert ctab to float32 to handle endian issues
+            return labels, ctab
+        except Exception as e:
+            print(f"Error loading vertex labels for subject {subid}: {e}")
+            return None, None
