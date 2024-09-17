@@ -219,7 +219,7 @@ def train_surf(config):
                 class_logits = cortexode.get_class_logits()
                 # Remove the unsqueeze(0) as it's causing the size mismatch
                 # Compute classification loss
-                print(class_logits.shape,predicted_labels.shape)
+                # print(class_logits.shape,predicted_labels.shape)
                 classification_loss = nn.NLLLoss()(class_logits, predicted_labels)
 
                 # Total Loss (add classification loss)
@@ -296,7 +296,7 @@ def train_surf(config):
                         class_logits = cortexode.get_class_logits()
                         # Remove the unsqueeze(0) as it's causing the size mismatch
                         # Compute classification loss
-                        print('val', class_logits.shape,predicted_labels.shape)
+                        # print('val', class_logits.shape,predicted_labels.shape)
                         classification_loss = nn.NLLLoss()(class_logits, predicted_labels)
                         exclude_classes = [4] if config.atlas == 'aparc'or config.atlas == 'DKTatlas40' else []
                         predicted_classes = torch.argmax(class_logits, dim=1)

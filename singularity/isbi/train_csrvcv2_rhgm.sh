@@ -75,7 +75,7 @@ python trainCSRandParcellation.py \
     --gnn_layers $gnn_layer \
     --gat_heads $gat_head \
     --train_type 'surfandseg' \
-    --data_dir '/speedrun/wacv-data-dev/' \
+    --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi_gnn_1/model/' \
     --init_dir '/cortexode/ckpts/isbi_gnn_1/init/' \
     --data_name 'hcp' \
