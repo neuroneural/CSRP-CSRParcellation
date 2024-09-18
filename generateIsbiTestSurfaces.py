@@ -15,6 +15,7 @@ import torch.nn.functional as F
 from torchdiffeq import odeint_adjoint as odeint
 
 from data.preprocess import process_volume, process_surface, process_surface_inverse
+from data.datautil import decode_names  # Import your tested decode_names function
 from util.mesh import laplacian_smooth, compute_normal, compute_mesh_distance, check_self_intersect
 from util.tca import topology
 from model.net import Unet
@@ -77,6 +78,35 @@ def extract_model_info(filename):
     epochs = re.search(r'(\d+)epochs', filename).group(1)
     return layers, epochs
 
+# --- Add the save_mesh_with_annotations function ---
+def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_name='hcp'):
+    """
+    Save the mesh with annotations using nibabel.
+    """
+    # Ensure inputs are correctly processed
+    verts = verts.squeeze()
+    faces = faces.squeeze().astype(np.int32)
+    verts, faces = process_surface_inverse(verts, faces, data_name)
+    
+    labels = labels.squeeze().astype(np.int32)
+    
+    # Ensure ctab is correctly sized and in numpy array format
+    if isinstance(ctab, torch.Tensor):
+        ctab = ctab.numpy()
+    ctab = ctab.astype(np.int32)
+    print(f"ctab size: {ctab.shape}")
+    assert ctab.shape[1] == 5, "ctab should have 5 columns for RGBA and region labels."
+    
+    # Save the surface in FreeSurfer format
+    nib.freesurfer.write_geometry(save_path_fs + '.surf', verts, faces)
+    
+    # Save the annotation
+    nib.freesurfer.write_annot(save_path_fs + '.annot', 
+                               labels,
+                               ctab,
+                               decode_names(),
+                               fill_ctab=False)
+
 if __name__ == '__main__':
     # ------ load configuration ------
     config = load_config()
@@ -106,10 +136,8 @@ if __name__ == '__main__':
 
     T = torch.Tensor([0, 1]).to(device)
 
-    print('C',"K","Q","num_classes")
-    print(C,K,Q,config.num_classes)
-    # csrvcv2_wm = CSRVCV2(dim_h=C, kernel_size=K, n_scale=Q, num_classes=config.num_classes).to(device)
-    # csrvcv2_gm = CSRVCV2(dim_h=C, kernel_size=K, n_scale=Q, num_classes=config.num_classes).to(device)
+    print('C', "K", "Q", "num_classes")
+    print(C, K, Q, config.num_classes)
     
     if config.gnn == 'gat':
         use_gcn = False
@@ -134,32 +162,6 @@ if __name__ == '__main__':
                             use_gcn=use_gcn,
                             gat_heads=config.gat_heads,
                             num_classes=config.num_classes).to(device)
-    
-    
-
-    
-    model_state_dict = torch.load(os.path.join(model_dir, config.wm_model_file), map_location=torch.device(config.device))
-
-    # Get the state_dict of your current model
-    current_state_dict = csrvcv2_wm.state_dict()
-
-    # Log keys and shape mismatches
-    for key in model_state_dict.keys():
-        if key in current_state_dict:
-            # Check for shape mismatch
-            if model_state_dict[key].shape != current_state_dict[key].shape:
-                print(f"Shape mismatch for layer '{key}':")
-                print(f" - Loaded model shape: {model_state_dict[key].shape}")
-                print(f" - Current model shape: {current_state_dict[key].shape}")
-        else:
-            # Key not found in the current model's state_dict
-            print(f"Unexpected key in loaded model state_dict: '{key}'")
-
-    # Log missing keys in the loaded state_dict
-    for key in current_state_dict.keys():
-        if key not in model_state_dict:
-            print(f"Missing key in loaded model state_dict: '{key}'")
-    
 
     # Load models for white matter and pial surfaces
     csrvcv2_wm.load_state_dict(torch.load(os.path.join(model_dir, config.wm_model_file), map_location=torch.device(config.device)))
@@ -187,6 +189,7 @@ if __name__ == '__main__':
         _, _, _, _, _, _, _, ctab = brain_dataset[idx]
         print('ctab')
         print(ctab.shape)
+
         # ------- predict segmentation -------
         with torch.no_grad():
             seg_out = segnet(volume_in)
@@ -238,38 +241,16 @@ if __name__ == '__main__':
             v_gm_pred = v_gm_pred[0].cpu().numpy()
             f_gm_pred = f_in_tensor[0].cpu().numpy()
 
-            # Map the surface coordinates from [-1,1] to their original space
-            v_wm_pred, f_wm_pred = process_surface_inverse(v_wm_pred, f_wm_pred, data_name)
-            v_gm_pred, f_gm_pred = process_surface_inverse(v_gm_pred, f_gm_pred, data_name)
-
-        # ------- save predicted surfaces ------- 
+        # ------- save predicted surfaces and annotations ------- 
         if test_type == 'pred':
             # Construct file naming convention using extracted model info
-            wm_filename = f'{data_name}_{surf_hemi}_{subid}_wm_layers{wm_layers}_epochs{wm_epochs}.white'
-            gm_filename = f'{data_name}_{surf_hemi}_{subid}_gm_layers{gm_layers}_epochs{gm_epochs}.pial'
-            
-            # Save the surfaces in FreeSurfer format
-            nib.freesurfer.io.write_geometry(os.path.join(result_dir, wm_filename), v_wm_pred, f_wm_pred)
-            nib.freesurfer.io.write_geometry(os.path.join(result_dir, gm_filename), v_gm_pred, f_gm_pred)
+            wm_basename = f'{data_name}_{surf_hemi}_{subid}_wm_layers{wm_layers}_epochs{wm_epochs}'
+            gm_basename = f'{data_name}_{surf_hemi}_{subid}_gm_layers{gm_layers}_epochs{gm_epochs}'
+            wm_save_path = os.path.join(result_dir, wm_basename)
+            gm_save_path = os.path.join(result_dir, gm_basename)
 
-            # ------- save annotations -------
-            wm_annot_filename = f'{data_name}_{surf_hemi}_{subid}_wm_layers{wm_layers}_epochs{wm_epochs}.white.annot'
-            gm_annot_filename = f'{data_name}_{surf_hemi}_{subid}_gm_layers{gm_layers}_epochs{gm_epochs}.pial.annot'
-            
-            # Check if ctab is a torch tensor and convert to numpy if needed
-            if isinstance(ctab, torch.Tensor):
-                ctab = ctab.numpy()
+            # Save white matter surface and annotations
+            save_mesh_with_annotations(v_wm_pred, f_wm_pred, class_pred_wm, ctab, wm_save_path, data_name)
 
-            # Check if ctab is 1-dimensional, and reshape if necessary
-            if ctab.ndim == 1:
-                num_regions = len(class_pred_wm)  # Assuming the number of regions matches the length of class_pred_wm
-                ctab = ctab.reshape((num_regions, 5))
-
-            # Ensure ctab is of integer type
-            ctab = ctab.astype(np.int32)
-
-            # Print ctab details for debugging
-            print(f"ctab.shape: {ctab.shape}")
-            print(f"ctab: {ctab}")
-            nib.freesurfer.io.write_annot(os.path.join(result_dir, wm_annot_filename), v_wm_pred, class_pred_wm, ctab)
-            nib.freesurfer.io.write_annot(os.path.join(result_dir, gm_annot_filename), v_gm_pred, class_pred_gm, ctab)
+            # Save gray matter surface and annotations
+            save_mesh_with_annotations(v_gm_pred, f_gm_pred, class_pred_gm, ctab, gm_save_path, data_name)
