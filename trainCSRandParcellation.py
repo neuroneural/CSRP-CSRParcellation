@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from data.csrandvcdataloader import BrainDataset
 from model.csrvcv2 import CSRVCV2  # Updated import
+from model.csrvcv3 import CSRVCV3  # Updated import
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Meshes
 
@@ -61,7 +62,8 @@ def train_surf(config):
     surf_hemi = config.surf_hemi
     device = config.device
     tag = config.tag
-    
+    print('surf_type',surf_type)
+    print('surf_hemi',surf_hemi)
     n_epochs = config.n_epochs
     start_epoch = config.start_epoch
     lr = config.lr
@@ -82,8 +84,8 @@ def train_surf(config):
     classification_loss_weight = config.classification_loss_weight  # e.g., 1.0
     
     # Create log file
-    log_filename = f"{model_dir}/model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_{solver}"
-    
+    log_filename = os.path.join(model_dir,f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_{solver}")
+    print('log_filename',log_filename)
     if config.gnn == 'gat':
         use_gcn = False
         log_filename += f"_heads{config.gat_heads}"
@@ -105,6 +107,15 @@ def train_surf(config):
     # Initialize the model
     if config.model_type == 'csrvc' and config.version == '2':
         cortexode = CSRVCV2(dim_h=C,
+                            kernel_size=K,
+                            n_scale=Q,
+                            sf=config.sf,
+                            gnn_layers=config.gnn_layers,
+                            use_gcn=use_gcn,
+                            gat_heads=config.gat_heads,
+                            num_classes=num_classes).to(device)
+    elif config.model_type == 'csrvc' and config.version == '3':
+        cortexode = CSRVCV3(dim_h=C,
                             kernel_size=K,
                             n_scale=Q,
                             sf=config.sf,
