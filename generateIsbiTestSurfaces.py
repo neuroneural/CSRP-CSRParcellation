@@ -1,4 +1,5 @@
 import os
+import re
 import nibabel as nib
 import trimesh
 import numpy as np
@@ -21,11 +22,11 @@ from model.csrvcv2 import CSRVCV2  # Updated import for new model
 from config import load_config
 from data.csrandvcdataloader import SegDataset, BrainDataset
 from torch.utils.data import DataLoader
+
 # Initialize topology correction
 topo_correct = topology()
 
 import matplotlib.pyplot as plt
-
 
 def seg2surf(seg, data_name='hcp', sigma=0.5, alpha=16, level=0.8, n_smooth=2):
     """
@@ -68,9 +69,15 @@ def seg2surf(seg, data_name='hcp', sigma=0.5, alpha=16, level=0.8, n_smooth=2):
     
     return v_mc, f_mc
 
+def extract_model_info(filename):
+    """
+    Extract GNN layers and epoch information from the model filename.
+    """
+    layers = re.search(r'layers(\d+)', filename).group(1)
+    epochs = re.search(r'(\d+)epochs', filename).group(1)
+    return layers, epochs
 
 if __name__ == '__main__':
-    
     # ------ load configuration ------
     config = load_config()
     test_type = config.test_type  # initial surface / prediction / evaluation
@@ -95,19 +102,75 @@ if __name__ == '__main__':
     print('loading models...')
     # ------ load models ------
     segnet = Unet(c_in=1, c_out=3).to(device)
-    segnet.load_state_dict(torch.load(model_dir + 'model_seg_' + data_name + '_' + tag + '.pt'))
+    segnet.load_state_dict(torch.load(os.path.join(model_dir, config.seg_model_file), map_location=torch.device(config.device)))
 
     T = torch.Tensor([0, 1]).to(device)
 
-    csrvcv2_wm = CSRVCV2(dim_h=C, kernel_size=K, n_scale=Q, num_classes=config.num_classes).to(device)
-    csrvcv2_gm = CSRVCV2(dim_h=C, kernel_size=K, n_scale=Q, num_classes=config.num_classes).to(device)
+    print('C',"K","Q","num_classes")
+    print(C,K,Q,config.num_classes)
+    # csrvcv2_wm = CSRVCV2(dim_h=C, kernel_size=K, n_scale=Q, num_classes=config.num_classes).to(device)
+    # csrvcv2_gm = CSRVCV2(dim_h=C, kernel_size=K, n_scale=Q, num_classes=config.num_classes).to(device)
+    
+    if config.gnn == 'gat':
+        use_gcn = False
+    elif config.gnn == 'gcn':
+        use_gcn = True
+    else:
+        use_gcn = False  # default to False if not specified
+
+    csrvcv2_wm = CSRVCV2(dim_h=C,
+                            kernel_size=K,
+                            n_scale=Q,
+                            sf=config.sf,
+                            gnn_layers=config.gnn_layers,
+                            use_gcn=use_gcn,
+                            gat_heads=config.gat_heads,
+                            num_classes=config.num_classes).to(device)
+    csrvcv2_gm = CSRVCV2(dim_h=C,
+                            kernel_size=K,
+                            n_scale=Q,
+                            sf=config.sf,
+                            gnn_layers=config.gnn_layers,
+                            use_gcn=use_gcn,
+                            gat_heads=config.gat_heads,
+                            num_classes=config.num_classes).to(device)
+    
+    
+
+    
+    model_state_dict = torch.load(os.path.join(model_dir, config.wm_model_file), map_location=torch.device(config.device))
+
+    # Get the state_dict of your current model
+    current_state_dict = csrvcv2_wm.state_dict()
+
+    # Log keys and shape mismatches
+    for key in model_state_dict.keys():
+        if key in current_state_dict:
+            # Check for shape mismatch
+            if model_state_dict[key].shape != current_state_dict[key].shape:
+                print(f"Shape mismatch for layer '{key}':")
+                print(f" - Loaded model shape: {model_state_dict[key].shape}")
+                print(f" - Current model shape: {current_state_dict[key].shape}")
+        else:
+            # Key not found in the current model's state_dict
+            print(f"Unexpected key in loaded model state_dict: '{key}'")
+
+    # Log missing keys in the loaded state_dict
+    for key in current_state_dict.keys():
+        if key not in model_state_dict:
+            print(f"Missing key in loaded model state_dict: '{key}'")
+    
 
     # Load models for white matter and pial surfaces
-    csrvcv2_wm.load_state_dict(torch.load(model_dir + 'model_wm_' + data_name + '_' + surf_hemi + '_' + tag + '.pt'))
-    csrvcv2_gm.load_state_dict(torch.load(model_dir + 'model_gm_' + data_name + '_' + surf_hemi + '_' + tag + '.pt'))
+    csrvcv2_wm.load_state_dict(torch.load(os.path.join(model_dir, config.wm_model_file), map_location=torch.device(config.device)))
+    csrvcv2_gm.load_state_dict(torch.load(os.path.join(model_dir, config.gm_model_file), map_location=torch.device(config.device)))
     
     csrvcv2_wm.eval()
     csrvcv2_gm.eval()
+
+    # Extract GNN layers and epochs from the model filenames
+    wm_layers, wm_epochs = extract_model_info(config.wm_model_file)
+    gm_layers, gm_epochs = extract_model_info(config.gm_model_file)
 
     # ------ start testing ------
     if test_type in ['eval', 'pred']:
@@ -115,14 +178,15 @@ if __name__ == '__main__':
         testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
 
     for idx, data in enumerate(testloader):
-        volume_in, seg_gt, subid = data
+        volume_in, seg_gt, subid, _aff = data
         subid = str(subid[0])
         volume_in = volume_in.to(device)
 
         # Obtain the colormap (ctab) using BrainDataset for a single patient
         brain_dataset = BrainDataset(config, data_usage='test', affCtab=True)
         _, _, _, _, _, _, _, ctab = brain_dataset[idx]
-
+        print('ctab')
+        print(ctab.shape)
         # ------- predict segmentation -------
         with torch.no_grad():
             seg_out = segnet(volume_in)
@@ -143,7 +207,7 @@ if __name__ == '__main__':
         # ------- save initial surface ------- 
         if test_type == 'init':
             mesh_init = trimesh.Trimesh(v_in, f_in)
-            mesh_init.export(init_dir + 'init_' + data_name + '_' + surf_hemi + '_' + subid + '.obj')
+            mesh_init.export(init_dir + f'init_{data_name}_{surf_hemi}_{subid}.obj')
 
         # ------- predict white matter surface ------- 
         with torch.no_grad():
@@ -180,10 +244,32 @@ if __name__ == '__main__':
 
         # ------- save predicted surfaces ------- 
         if test_type == 'pred':
+            # Construct file naming convention using extracted model info
+            wm_filename = f'{data_name}_{surf_hemi}_{subid}_wm_layers{wm_layers}_epochs{wm_epochs}.white'
+            gm_filename = f'{data_name}_{surf_hemi}_{subid}_gm_layers{gm_layers}_epochs{gm_epochs}.pial'
+            
             # Save the surfaces in FreeSurfer format
-            nib.freesurfer.io.write_geometry(result_dir + data_name + '_' + surf_hemi + '_' + subid + '.white', v_wm_pred, f_wm_pred)
-            nib.freesurfer.io.write_geometry(result_dir + data_name + '_' + surf_hemi + '_' + subid + '.pial', v_gm_pred, f_gm_pred)
+            nib.freesurfer.io.write_geometry(os.path.join(result_dir, wm_filename), v_wm_pred, f_wm_pred)
+            nib.freesurfer.io.write_geometry(os.path.join(result_dir, gm_filename), v_gm_pred, f_gm_pred)
 
             # ------- save annotations -------
-            nib.freesurfer.io.write_annot(result_dir + data_name + '_' + surf_hemi + '_' + subid + '.white.annot', v_wm_pred, class_pred_wm, ctab)
-            nib.freesurfer.io.write_annot(result_dir + data_name + '_' + surf_hemi + '_' + subid + '.pial.annot', v_gm_pred, class_pred_gm, ctab)
+            wm_annot_filename = f'{data_name}_{surf_hemi}_{subid}_wm_layers{wm_layers}_epochs{wm_epochs}.white.annot'
+            gm_annot_filename = f'{data_name}_{surf_hemi}_{subid}_gm_layers{gm_layers}_epochs{gm_epochs}.pial.annot'
+            
+            # Check if ctab is a torch tensor and convert to numpy if needed
+            if isinstance(ctab, torch.Tensor):
+                ctab = ctab.numpy()
+
+            # Check if ctab is 1-dimensional, and reshape if necessary
+            if ctab.ndim == 1:
+                num_regions = len(class_pred_wm)  # Assuming the number of regions matches the length of class_pred_wm
+                ctab = ctab.reshape((num_regions, 5))
+
+            # Ensure ctab is of integer type
+            ctab = ctab.astype(np.int32)
+
+            # Print ctab details for debugging
+            print(f"ctab.shape: {ctab.shape}")
+            print(f"ctab: {ctab}")
+            nib.freesurfer.io.write_annot(os.path.join(result_dir, wm_annot_filename), v_wm_pred, class_pred_wm, ctab)
+            nib.freesurfer.io.write_annot(os.path.join(result_dir, gm_annot_filename), v_gm_pred, class_pred_gm, ctab)

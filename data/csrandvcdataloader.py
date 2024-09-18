@@ -11,52 +11,61 @@ import trimesh
 # **Add the necessary imports for smoothing and normals**
 from util.mesh import laplacian_smooth, compute_normal
 
-
 class SegData():
-    def __init__(self, vol, seg):
+    def __init__(self, vol, seg, subj_id,aff):
         self.vol = torch.Tensor(vol)
         self.seg = torch.Tensor(seg)
+        self.subj_id = subj_id
+        self.aff = aff
+    
+    def getSeg(self):
+        return self.vol, self.seg, self.subj_id, self.aff
 
-        vol = []
-        seg = []
-
-        
 class SegDataset(Dataset):
-    def __init__(self, data):
-        super(Dataset, self).__init__()
-        self.data = data
-
+    def __init__(self, config, data_usage='train'):
+        """
+        Initializes the dataset with configurations for lazy loading.
+        Args:
+            config: Configuration object containing dataset parameters.
+            data_usage: Specifies the dataset split to use ('train', 'valid', 'test').
+        """
+        self.config = config
+        self.data_usage = data_usage
+        self.data_dir = os.path.join(config.data_dir, data_usage)
+        # Assuming self.data_dir is the directory path containing subject folders and possibly other files
+        self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '',str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
+        
     def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, i):
-        brain = self.data[i]
-        return brain.vol, brain.seg
+        return len(self.subject_list)
     
+    def __getitem__(self, idx):
+        subid = f'{self.subject_list[idx]}'
+        subid = re.sub(r'\D', '', subid)
+
+        vol, seg,_,aff = self._load_seg_data_for_subject(subid,self.config,self.data_usage)
+        assert subid == _
+        return vol, seg, subid, aff
     
-def load_seg_data(config, data_usage='train'):
-    """
-    data_dir: the directory of your dataset
-    data_name: [hcp, adni, dhcp, ...]
-    data_usage: [train, valid, test]
-    """
-    
-    data_name = config.data_name
-    data_dir = config.data_dir
-    data_dir = data_dir + data_usage + '/'
+    def _load_seg_data_for_subject(self, subid,config,data_usage):
+        """
+        data_dir: the directory of your dataset
+        data_name: [hcp, adni, dhcp, ...]
+        data_usage: [train, valid, test]
+        """
+        
+        data_name = config.data_name
+        data_dir = config.data_dir
+        data_dir = data_dir + data_usage + '/'
 
-    subject_list = sorted(os.listdir(data_dir))
-    data_list = []
-
-    for i in tqdm(range(len(subject_list))):
-        subid = subject_list[i]
-
+        subject_list = sorted(os.listdir(data_dir))
+        
         if data_name == 'hcp' or data_name == 'adni':
             brain = nib.load(data_dir+subid+'/mri/orig.mgz')
             brain_arr = brain.get_fdata()
             brain_arr = (brain_arr / 255.).astype(np.float32)
             brain_arr = process_volume(brain_arr, data_name)
-
+            aff=brain.affine
+            
             seg = nib.load(data_dir+subid+'/mri/ribbon.mgz')
             seg_arr = seg.get_fdata()
             seg_arr = process_volume(seg_arr, data_name)[0]
@@ -66,7 +75,6 @@ def load_seg_data(config, data_usage='train'):
             seg_arr = np.zeros_like(seg_left, dtype=int)  # final label
             seg_arr += 1 * seg_left
             seg_arr += 2 * seg_right
-    
         elif data_name == 'dhcp':
             brain = nib.load(data_dir+subid+'/'+subid+'_T2w.nii.gz')
             brain_arr = brain.get_fdata()
@@ -77,14 +85,8 @@ def load_seg_data(config, data_usage='train'):
             seg_arr = np.load(data_dir+subid+'/'+subid+'_wm_label.npy', allow_pickle=True)
             seg_arr = process_volume(seg_arr, data_name)[0]
             
-        segdata = SegData(vol=brain_arr, seg=seg_arr)
-        # add to data list
-        data_list.append(segdata)
+        return SegData(vol=brain_arr, seg=seg_arr,subj_id=subid,aff=aff).getSeg()
 
-    # make dataset
-    dataset = SegDataset(data_list)
-    
-    return dataset
 
 class BrainData():
     """

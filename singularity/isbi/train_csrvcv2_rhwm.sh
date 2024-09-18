@@ -76,14 +76,14 @@ python trainCSRandParcellation.py \
     --gat_heads $gat_head \
     --train_type 'surfandseg' \
     --data_dir '/speedrun/cortexode-data-rp/' \
-    --model_dir '/cortexode/ckpts/isbi_gnn_1/model/' \
-    --init_dir '/cortexode/ckpts/isbi_gnn_1/init/' \
+    --model_dir '/cortexode/ckpts/isbi_gnn_2/model/' \
+    --init_dir '/cortexode/ckpts/isbi_gnn_2/init/' \
     --data_name 'hcp' \
     --surf_hemi 'rh' \
     --surf_type 'wm' \
     --n_epochs 401 \
     --start_epoch 1 \
     --tag 'vc' \
-    --device 'gpu' \
+    --device 'cuda' \
     --classification_loss_threshold .04 \
-    --classification_loss_weight .1
+    --classification_loss_weight 1.0
