@@ -29,6 +29,9 @@ topo_correct = topology()
 
 import matplotlib.pyplot as plt
 
+import copy
+
+
 def seg2surf(seg, data_name='hcp', sigma=0.5, alpha=16, level=0.8, n_smooth=2):
     """
     Extract the surface based on the segmentation.
@@ -185,10 +188,16 @@ if __name__ == '__main__':
         volume_in = volume_in.to(device)
 
         # Obtain the colormap (ctab) using BrainDataset for a single patient
-        brain_dataset = BrainDataset(config, data_usage='test', affCtab=True)
-        _, _, _, _, _, _, _, ctab = brain_dataset[idx]
-        print('ctab')
-        print(ctab.shape)
+        config_wm = copy.deepcopy(config)
+        config_wm.surf_type='wm'
+        config_gm = copy.deepcopy(config)
+        config_gm.surf_type='gm'
+        brain_dataset_wm = BrainDataset(config_wm, data_usage='test', affCtab=True)
+        brain_dataset_gm = BrainDataset(config_gm, data_usage='test', affCtab=True)
+        # _, _, _, _, _, _, _, ctab = brain_dataset_wm[idx]
+        # Unpack all items from the dataset
+        brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab = brain_dataset_wm[idx]
+
 
         # ------- predict segmentation -------
         with torch.no_grad():
@@ -254,3 +263,27 @@ if __name__ == '__main__':
 
             # Save gray matter surface and annotations
             save_mesh_with_annotations(v_gm_pred, f_gm_pred, class_pred_gm, ctab, gm_save_path, data_name)
+            
+            
+            # Construct file naming convention for ground truth, now including surf_type
+            gt_basename = f'{data_name}_{surf_hemi}_{subid}_wm_gt'#chatgpt, i may need to create two dataloaders of 
+            gt_save_path = os.path.join(result_dir, gt_basename)
+
+            # Save ground truth surface and annotations
+            v_gt = v_gt.cpu().numpy()
+            f_gt = f_gt.cpu().numpy()
+            labels = labels.cpu().numpy()
+            save_mesh_with_annotations(v_gt, f_gt, labels, ctab, gt_save_path, data_name)
+            
+            brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab = brain_dataset_gm[idx]
+
+            # Construct file naming convention for ground truth, now including surf_type
+            gt_basename = f'{data_name}_{surf_hemi}_{subid}_gm_gt'#chatgpt, i may need to create two dataloaders of 
+            gt_save_path = os.path.join(result_dir, gt_basename)
+
+            # Save ground truth surface and annotations
+            v_gt = v_gt.cpu().numpy()
+            f_gt = f_gt.cpu().numpy()
+            labels = labels.cpu().numpy()
+            save_mesh_with_annotations(v_gt, f_gt, labels, ctab, gt_save_path, data_name)
+            

@@ -265,7 +265,7 @@ class BrainDataset(Dataset):
         rho = self.config.rho
         lambd = self.config.lambd
         device = self.device
-
+        
         v_in_tensor = torch.Tensor(v_in).unsqueeze(0).to(device)
         f_in_tensor = torch.LongTensor(f_in).unsqueeze(0).to(device)
         for _ in range(n_inflate):

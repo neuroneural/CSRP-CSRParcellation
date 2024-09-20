@@ -28,18 +28,16 @@ singularity exec --nv \
 
 pid1=$!  # Store the process ID of the second process
 
-# singularity exec --nv \
-#     --bind /data,\
-# /data/users2/washbee/speedrun/:/speedrun,\
-# /data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
-#     /data/users2/washbee/containers/csrf_sandbox/ \
-#     /cortexode/singularity/isbi/train_csrvcv2_lhwm.sh $SLURM_ARRAY_TASK_ID &
+singularity exec --nv \
+    --bind /data,\
+/data/users2/washbee/speedrun/:/speedrun,\
+/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
+    /data/users2/washbee/containers/csrf_sandbox/ \
+    /cortexode/singularity/isbi/train_csrvcv2_lhwm.sh $SLURM_ARRAY_TASK_ID &
 
-# pid2=$!  # Store the process ID of the second process
+pid2=$!  # Store the process ID of the second process
 
 wait $pid1
-# wait $pid2
-
-
+wait $pid2
 
 sleep 10s
