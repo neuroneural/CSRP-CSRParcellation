@@ -16,7 +16,20 @@ import torch.multiprocessing as mp
 from config import load_config
 from scipy.spatial import cKDTree
 
+
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
+    """
+    Compute the Dice coefficient between predicted and target labels.
+    
+    Args:
+        pred (torch.Tensor): Predicted labels, shape [num_vertices].
+        target (torch.Tensor): Ground truth labels, shape [num_vertices].
+        num_classes (int): Number of classes.
+        exclude_classes (list): List of classes to exclude from Dice computation.
+    
+    Returns:
+        float: Average Dice score across classes.
+    """
     dice_scores = []
     pred = pred.cpu().numpy()
     target = target.cpu().numpy()
@@ -38,6 +51,7 @@ def compute_dice(pred, target, num_classes, exclude_classes=[]):
         dice_scores.append(dice_score)
         
     return np.mean(dice_scores)
+
 
 def train_surf(config):
     """
@@ -98,8 +112,10 @@ def train_surf(config):
         if os.path.isfile(model_path):
             cortexode.load_state_dict(torch.load(model_path, map_location=device))
             print(f"Model loaded from {model_path}")
+            logging.info(f"Model loaded from {model_path}")
         else:
             print("No model file provided or file does not exist. Starting from scratch.")
+            logging.info("No model file provided or file does not exist. Starting from scratch.")
 
     optimizer = optim.Adam(cortexode.parameters(), lr=lr)
 
@@ -123,50 +139,49 @@ def train_surf(config):
     logging.info("Start training ...")
     num_time_steps = 10  # Define the number of time steps
 
-    for epoch in tqdm(range(start_epoch, n_epochs + 1)):
+    for epoch in tqdm(range(start_epoch, n_epochs + 1), desc="Epochs"):
+        cortexode.train()  # Set to training mode
         avg_loss = []
-        for idx, data in enumerate(trainloader):
+        for idx, data in enumerate(tqdm(trainloader, desc=f"Epoch {epoch}")):
             # Unpack data
             volume_in, v_in, v_gt, f_in, f_gt, labels = data
 
             optimizer.zero_grad()
 
             # Move data to device and ensure float dtype
-            volume_in = volume_in.to(device).float()
-            v_in = v_in.to(device).float()
-            v_gt = v_gt.to(device).float()
-            f_in = f_in.to(device).long()
-            f_gt = f_gt.to(device).long()
-            labels = labels.to(device).long()
+            volume_in = volume_in.to(device, non_blocking=True).float()
+            v_in = v_in.to(device, non_blocking=True).float()
+            v_gt = v_gt.to(device, non_blocking=True).float()
+            f_in = f_in.to(device, non_blocking=True).long()
+            f_gt = f_gt.to(device, non_blocking=True).long()
+            labels = labels.to(device, non_blocking=True).long()
 
             # Set initial state and data
-            t = torch.arange(num_time_steps).to(device)
-            cortexode.set_data(v_in, volume_in, f=f_in, t=t)
-            # No initial_state or features_in needed
+            cortexode.set_data(v_in, volume_in, f=f_in, t=None)  # 't' is handled per step
 
             # Initialize variables
             v_out = v_in.clone()
             hidden_states = None
 
             for step in range(num_time_steps):
-                # Convert step to tensor
-                t_step = torch.tensor([step], device=device, dtype=torch.float32)
+                # Convert step to tensor as Float
+                t_step = torch.tensor([step], device=device, dtype=torch.float)
+                assert t_step.dtype == torch.float, f"Expected t_step to be Float, got {t_step.dtype}"
 
                 # Forward pass
                 dx, class_logits, hidden_states = cortexode(v_out, t=t_step, hidden_states=hidden_states)
                 v_out = v_out + dx
 
-                # Update the memory with the latest interactions
+                # Update the memory with t as Float
                 cortexode.block1.memory.update_state(
                     cortexode.block1.src,
                     cortexode.block1.dst,
-                    t_edge=t_step.repeat(cortexode.block1.src.size(0)),
-                    raw_msg=cortexode.block1.edge_attr,
+                    t_step.repeat(cortexode.block1.src.size(0)),  # [num_edges]
+                    cortexode.block1.edge_attr,
                 )
 
                 # Retain hidden states for the next step
                 hidden_states = cortexode.block1.memory.memory.clone()
-
 
             # Reconstruction Loss
             if surf_type == 'wm':
@@ -177,6 +192,8 @@ def train_surf(config):
                 # MSE Loss between vertex positions
                 mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
                 reconstruction_loss = mse_loss
+            else:
+                raise ValueError(f"Unsupported surf_type: {surf_type}")
 
             total_loss = reconstruction_loss
 
@@ -184,13 +201,13 @@ def train_surf(config):
             if not compute_classification_loss and reconstruction_loss.item() < classification_loss_threshold:
                 compute_classification_loss = True
                 print(f"Reconstruction loss below threshold at epoch {epoch}, batch {idx}. Starting classification loss computation.")
+                logging.info(f"Reconstruction loss below threshold at epoch {epoch}, batch {idx}. Starting classification loss computation.")
 
             if compute_classification_loss:
                 # Perform KDTree nearest neighbor search to assign labels
                 v_out_np = v_out.squeeze(0).detach().cpu().numpy()
                 v_gt_np = v_gt.squeeze(0).cpu().numpy()
 
-                # Build KDTree from ground truth surface vertices
                 if surf_type == 'wm':
                     kd_tree = cKDTree(v_gt_np)
 
@@ -201,13 +218,20 @@ def train_surf(config):
                     labels_np = labels.squeeze(0).cpu().numpy()
                     predicted_labels = labels_np[indices]
                 else:
-                    predicted_labels = labels.squeeze(0).cpu().numpy()  # Correspondence can be exploited.
+                    # For 'gm', assuming direct correspondence
+                    predicted_labels = labels.squeeze(0).cpu().numpy()  # Modify as per your correspondence strategy
 
                 # Convert labels to tensor
                 predicted_labels = torch.from_numpy(predicted_labels).long().to(device)
 
                 # Retrieve classification logits
                 class_logits = cortexode.get_class_logits()
+
+                # Ensure logits are in log-probability form
+                # If using NLLLoss, apply log_softmax if not already applied
+                # Assuming `class_logits` are already log_softmaxed in DeformBlockGNN.forward
+                # Otherwise, uncomment the following line:
+                # class_logits = F.log_softmax(class_logits, dim=1)
 
                 # Compute classification loss
                 classification_loss = nn.NLLLoss()(class_logits, predicted_labels)
@@ -219,53 +243,57 @@ def train_surf(config):
             total_loss.backward()
             optimizer.step()
 
-        logging.info('epoch:{}, loss:{}'.format(epoch, np.mean(avg_loss)))
+        avg_loss_value = np.mean(avg_loss)
+        logging.info(f'Epoch {epoch}, Avg Loss: {avg_loss_value:.4f}')
+        print(f'Epoch {epoch}, Avg Loss: {avg_loss_value:.4f}')
 
+        # Validation
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             logging.info('-------------validation--------------')
+            print('-------------validation--------------')
+            cortexode.eval()  # Set to evaluation mode
             with torch.no_grad():
                 total_valid_error = []
                 recon_valid_error = []
                 dice_valid_error = []
                 classification_valid_error = []
-                for idx, data in enumerate(validloader):
+                for idx, data in enumerate(tqdm(validloader, desc=f"Validation Epoch {epoch}")):
                     volume_in, v_in, v_gt, f_in, f_gt, labels = data
 
                     # Move data to device and ensure float dtype
-                    volume_in = volume_in.to(device).float()
-                    v_in = v_in.to(device).float()
-                    v_gt = v_gt.to(device).float()
-                    f_in = f_in.to(device).long()
-                    f_gt = f_gt.to(device).long()
-                    labels = labels.to(device).long()
+                    volume_in = volume_in.to(device, non_blocking=True).float()
+                    v_in = v_in.to(device, non_blocking=True).float()
+                    v_gt = v_gt.to(device, non_blocking=True).float()
+                    f_in = f_in.to(device, non_blocking=True).long()
+                    f_gt = f_gt.to(device, non_blocking=True).long()
+                    labels = labels.to(device, non_blocking=True).long()
 
                     # Set initial state and data
-                    t = torch.arange(num_time_steps).to(device)
-                    cortexode.set_data(v_in, volume_in, f=f_in, t=t)
+                    cortexode.set_data(v_in, volume_in, f=f_in, t=None)  # 't' is handled per step
 
                     # Initialize variables
                     v_out = v_in.clone()
                     hidden_states = None
 
                     for step in range(num_time_steps):
-                        # Convert step to tensor
-                        t_step = torch.tensor([step], device=device, dtype=torch.float32)
+                        # Convert step to tensor as Float
+                        t_step = torch.tensor([step], device=device, dtype=torch.float)
+                        assert t_step.dtype == torch.float, f"Expected t_step to be Float, got {t_step.dtype}"
 
                         # Forward pass
                         dx, class_logits, hidden_states = cortexode(v_out, t=t_step, hidden_states=hidden_states)
                         v_out = v_out + dx
 
-                        # Update the memory with the latest interactions
+                        # Update the memory with t as Float
                         cortexode.block1.memory.update_state(
                             cortexode.block1.src,
                             cortexode.block1.dst,
-                            t_edge=t_step.repeat(cortexode.block1.src.size(0)),
-                            raw_msg=cortexode.block1.edge_attr,
+                            t_step.repeat(cortexode.block1.src.size(0)),  # [num_edges]
+                            cortexode.block1.edge_attr,
                         )
 
                         # Retain hidden states for the next step
                         hidden_states = cortexode.block1.memory.memory.clone()
-
 
                     # Reconstruction Loss
                     if surf_type == 'wm':
@@ -276,10 +304,13 @@ def train_surf(config):
                         # MSE Loss between vertex positions
                         mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
                         reconstruction_loss = mse_loss
+                    else:
+                        raise ValueError(f"Unsupported surf_type: {surf_type}")
 
                     total_valid_loss = reconstruction_loss.item()
                     recon_valid_loss = reconstruction_loss.item()
-                    dice_score = -1.0  # Unless calculated, make negative since higher is better.
+                    dice_score = -1.0  # Initialize dice_score
+
                     if compute_classification_loss:
                         # Perform KDTree nearest neighbor search to assign labels
                         v_out_np = v_out.squeeze(0).detach().cpu().numpy()
@@ -296,7 +327,8 @@ def train_surf(config):
                             labels_np = labels.squeeze(0).cpu().numpy()
                             predicted_labels = labels_np[indices]
                         else:
-                            predicted_labels = labels.squeeze(0).cpu().numpy()  # Correspondence can be exploited.
+                            # For 'gm', assuming direct correspondence
+                            predicted_labels = labels.squeeze(0).cpu().numpy()  # Modify as per your correspondence strategy
 
                         # Convert labels to tensor
                         predicted_labels = torch.from_numpy(predicted_labels).long().to(device)
@@ -304,37 +336,65 @@ def train_surf(config):
                         # Retrieve classification logits
                         class_logits = cortexode.get_class_logits()
 
+                        # Ensure logits are in log-probability form
+                        # If using NLLLoss, apply log_softmax if not already applied
+                        # Assuming `class_logits` are already log_softmaxed in DeformBlockGNN.forward
+                        # Otherwise, uncomment the following line:
+                        # class_logits = F.log_softmax(class_logits, dim=1)
+
                         # Compute classification loss
                         classification_loss = nn.NLLLoss()(class_logits, predicted_labels)
-                        exclude_classes = [4] if config.atlas == 'aparc' or config.atlas == 'DKTatlas40' else []
+
+                        # Compute Dice score
+                        exclude_classes = [4] if config.atlas in ['aparc', 'DKTatlas40'] else []
                         predicted_classes = torch.argmax(class_logits, dim=1)
                         dice_score = compute_dice(predicted_classes, predicted_labels, num_classes, exclude_classes)
 
+                        # Update total validation loss
                         total_valid_loss += classification_loss_weight * classification_loss.item()
                         dice_valid_error.append(dice_score)
                         classification_valid_error.append(classification_loss_weight * classification_loss.item())
+
+                    # Accumulate validation losses
                     total_valid_error.append(total_valid_loss)
                     recon_valid_error.append(recon_valid_loss)
 
-                logging.info('epoch:{}, total validation error:{}'.format(epoch, np.mean(total_valid_error)))
-                logging.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
-                logging.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
-                logging.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
+                # Logging validation metrics
+                avg_total_valid_loss = np.mean(total_valid_error)
+                avg_recon_valid_loss = np.mean(recon_valid_error)
+                avg_dice_score = np.mean(dice_valid_error) if dice_valid_error else 0.0
+                avg_classification_valid_loss = np.mean(classification_valid_error) if classification_valid_error else 0.0
+
+                logging.info(f'Epoch {epoch}, Total Validation Loss: {avg_total_valid_loss:.4f}')
+                logging.info(f'Epoch {epoch}, Reconstruction Validation Loss: {avg_recon_valid_loss:.4f}')
+                logging.info(f'Epoch {epoch}, Dice Validation Score: {avg_dice_score:.4f}')
+                logging.info(f'Epoch {epoch}, Classification Validation Loss: {avg_classification_valid_loss:.4f}')
                 logging.info('-------------------------------------')
+
+                # Also print to console
+                print(f'Epoch {epoch}, Total Validation Loss: {avg_total_valid_loss:.4f}')
+                print(f'Epoch {epoch}, Reconstruction Validation Loss: {avg_recon_valid_loss:.4f}')
+                print(f'Epoch {epoch}, Dice Validation Score: {avg_dice_score:.4f}')
+                print(f'Epoch {epoch}, Classification Validation Loss: {avg_classification_valid_loss:.4f}')
+                print('-------------------------------------')
 
         # Save model checkpoints
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_{epoch}epochs.pt"
 
-            torch.save(cortexode.state_dict(), os.path.join(model_dir, model_filename))
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': cortexode.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                # Add other states if necessary
+            }, os.path.join(model_dir, model_filename))
+            logging.info(f'Model checkpoint saved at {model_filename}')
+            print(f'Model checkpoint saved at {model_filename}')
 
-    final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}.pt"
-
-    # Save the final model
-    torch.save(cortexode.state_dict(), os.path.join(model_dir, final_model_filename))
 
 if __name__ == '__main__':
-    mp.set_start_method('spawn')
+    # Ensure that multiprocessing starts correctly
+    mp.set_start_method('spawn', force=True)  # Added force=True for compatibility
     config = load_config()
     if config.train_type == 'surfandseg':
         train_surf(config)
