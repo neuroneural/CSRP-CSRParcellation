@@ -18,6 +18,7 @@ def load_config():
     parser.add_argument('--gm_model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--wm_model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--seg_model_file', default=None, type=str, help="File for resuming models.")
+    parser.add_argument('--num_time_steps', default=10, type=int, help="Number of timesteps for tgnn.")
     parser.add_argument('--continue', default="no", type=str, help="continue training [yes, no].")
     parser.add_argument('--start_epoch', default=1, type=int, help="start counting at 1 for start epochs.")
     parser.add_argument('--data_name', default="hcp", type=str, help="name of the dataset")
