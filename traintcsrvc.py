@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from data.csrandvcdataloader import BrainDataset
 from model.tcsrvc import TCSRVC  # Updated import
+
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Meshes
 
@@ -156,8 +157,17 @@ def train_surf(config):
             f_gt = f_gt.to(device, non_blocking=True).long()
             labels = labels.to(device, non_blocking=True).long()
 
-            # Set initial state and data
-            cortexode.set_data(v_in, volume_in, f=f_in, t=None)  # 't' is handled per step
+            # Construct edge_list from faces
+            edge_list = torch.cat([
+                f_in[0, :, [0, 1]],
+                f_in[0, :, [1, 2]],
+                f_in[0, :, [2, 0]]
+            ], dim=0).t()  # Shape: [2, num_edges]
+            edge_list = add_self_loops(edge_list)[0]  # Add self-loops
+            assert edge_list.dim() == 2 and edge_list.size(0) == 2, f"Expected edge_list to be [2, num_edges + 1], got {edge_list.shape}"
+
+            # Set initial state and data with edge_list
+            cortexode.set_data(v_in, volume_in, f=f_in, edge_list=edge_list, t=None)  # 't' is handled per step
 
             # Initialize variables
             v_out = v_in.clone()
@@ -268,8 +278,17 @@ def train_surf(config):
                     f_gt = f_gt.to(device, non_blocking=True).long()
                     labels = labels.to(device, non_blocking=True).long()
 
-                    # Set initial state and data
-                    cortexode.set_data(v_in, volume_in, f=f_in, t=None)  # 't' is handled per step
+                    # Construct edge_list from faces
+                    edge_list = torch.cat([
+                        f_in[0, :, [0, 1]],
+                        f_in[0, :, [1, 2]],
+                        f_in[0, :, [2, 0]]
+                    ], dim=0).t()  # Shape: [2, num_edges]
+                    edge_list = add_self_loops(edge_list)[0]  # Add self-loops
+                    assert edge_list.dim() == 2 and edge_list.size(0) == 2, f"Expected edge_list to be [2, num_edges + 1], got {edge_list.shape}"
+
+                    # Set initial state and data with edge_list
+                    cortexode.set_data(v_in, volume_in, f=f_in, edge_list=edge_list, t=None)  # 't' is handled per step
 
                     # Initialize variables
                     v_out = v_in.clone()
@@ -365,6 +384,7 @@ def train_surf(config):
                 avg_dice_score = np.mean(dice_valid_error) if dice_valid_error else 0.0
                 avg_classification_valid_loss = np.mean(classification_valid_error) if classification_valid_error else 0.0
 
+                # Logging
                 logging.info(f'Epoch {epoch}, Total Validation Loss: {avg_total_valid_loss:.4f}')
                 logging.info(f'Epoch {epoch}, Reconstruction Validation Loss: {avg_recon_valid_loss:.4f}')
                 logging.info(f'Epoch {epoch}, Dice Validation Score: {avg_dice_score:.4f}')

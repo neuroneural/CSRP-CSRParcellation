@@ -8,6 +8,7 @@ from tqdm import tqdm
 from data.csrandvcdataloader import BrainDataset
 from model.csrvcv2 import CSRVCV2  # Updated import
 from model.csrvcv3 import CSRVCV3  # Updated import
+from model.csrvcSplitGnn import CSRVCSPLITGNN  # Updated import
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Meshes
 
@@ -123,6 +124,17 @@ def train_surf(config):
                             use_gcn=use_gcn,
                             gat_heads=config.gat_heads,
                             num_classes=num_classes).to(device)
+    elif config.model_type == "csrvc" and config.version == '4':
+        assert int(Q) == 3, f"{Q} for safety"
+        assert int(K) == 5, f"{K} for safety"
+        cortexode = CSRVCSPLITGNN(dim_h=C,
+                            kernel_size=K,
+                            n_scale=Q,
+                            sf=config.sf,
+                            gnn_layers=config.gnn_layers,
+                            use_gcn=use_gcn,
+                            gat_heads=config.gat_heads,
+                            num_classes=num_classes).to(device) 
     else:
         raise ValueError("Unsupported model type or version.")
 
