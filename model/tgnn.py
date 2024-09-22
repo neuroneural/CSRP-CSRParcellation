@@ -50,22 +50,25 @@ class DeformBlockGNN(torch.nn.Module):
                 num_nodes=num_nodes,     # Number of nodes in the current mesh
                 raw_msg_dim=self.C,      # Dimension of raw message passed between nodes
                 memory_dim=self.C,       # Memory dimension, matches node feature dimension
-                time_dim=self.C,         # Unused here since time encoding is skipped
-                message_module=IdentityMessage(self.C, self.C, self.C),  # Identity message module
+                time_dim=1,         # Unused here since time encoding is skipped
+                message_module=IdentityMessage(self.C, self.C, 1),  # Identity message module__init__(self, raw_msg_dim: int, memory_dim: int, time_dim: int):
                 aggregator_module=LastAggregator()  # Aggregator that updates based on last interaction
             )
 
         self.edge_index = edge_index  # Mesh edges
         self.x = x                    # Node features (now 3D coordinates)
         self.t = t                    # Time information (although not heavily used here)
+        print('a')
         self.memory.reset_state()     # Reset memory at the start of each batch
-
+        print('bb')
     def forward(self, memory):
         n_id = torch.arange(self.x.size(0), device=self.x.device)
 
         # Retrieve the memory and last update information for the nodes
+        print("A")
         memory, last_update = self.memory(n_id)
-
+        print("B")
+        print(memory.shape)
         # Ensure edge indices are valid and check bounds
         max_node_idx = self.x.size(0) - 1  # Maximum valid node index
         assert torch.max(self.edge_index) <= max_node_idx, f"Edge index out of bounds! Max allowed index: {max_node_idx}"
@@ -177,8 +180,9 @@ def train(num_batches=5, num_timesteps=3):
         optimizer.zero_grad()
 
         # Initialize the memory for the batch
+        print('torch.arange(x.size(0).shape',torch.arange(x.size(0)).shape)
         batch_memory, _last_update = model.memory(torch.arange(x.size(0), device=device))  # Initialize memory for nodes
-
+        print('x.shape',x.shape)
         # Loop over the timesteps within each batch (memory carries over across timesteps)
         for timestep in range(num_timesteps):
             # Get the deformation and memory
@@ -199,4 +203,4 @@ def train(num_batches=5, num_timesteps=3):
         print(f'Batch {batch_idx}, Final Loss: {final_loss.item()}')
 
 # Run the training loop with multiple timesteps per batch and variable mesh sizes
-train(num_batches=100, num_timesteps=3)
+train(num_batches=3, num_timesteps=3)
