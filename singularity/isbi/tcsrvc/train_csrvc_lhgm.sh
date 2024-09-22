@@ -83,5 +83,5 @@ python traintcsrvc.py \
     --tag 'vc' \
     --device 'cuda' \
     --classification_loss_threshold .04 \
-    --classification_loss_weight 10.0 \
+    --classification_loss_weight 5.0 \
     --num_time_steps 10  # New parameter

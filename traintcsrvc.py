@@ -158,16 +158,8 @@ def train_surf(config):
             labels = labels.to(device, non_blocking=True).long()
 
             # Construct edge_list from faces
-            edge_list = torch.cat([
-                f_in[0, :, [0, 1]],
-                f_in[0, :, [1, 2]],
-                f_in[0, :, [2, 0]]
-            ], dim=0).t()  # Shape: [2, num_edges]
-            edge_list = add_self_loops(edge_list)[0]  # Add self-loops
-            assert edge_list.dim() == 2 and edge_list.size(0) == 2, f"Expected edge_list to be [2, num_edges + 1], got {edge_list.shape}"
-
             # Set initial state and data with edge_list
-            cortexode.set_data(v_in, volume_in, f=f_in, edge_list=edge_list, t=None)  # 't' is handled per step
+            cortexode.set_data(v_in, volume_in, f=f_in)  # 't' is handled per step
 
             # Initialize variables
             v_out = v_in.clone()

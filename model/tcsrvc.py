@@ -441,7 +441,7 @@ class TCSRVC(nn.Module):
             temporal=True  # Temporal GNN
         )
 
-    def set_data(self, x, V, f=None, reduced_DOF=False, t=None):
+    def set_data(self, x, V, f=None, reduced_DOF=False):
         """
         Set data for TCSRVC.
 
@@ -458,10 +458,13 @@ class TCSRVC(nn.Module):
         # Construct edge list from faces
         assert f.dim() == 3 and f.size(2) == 3, f"Expected f to be [batch_size, num_faces, 3], got {f.shape}"
         edge_list = torch.cat([
-            f[0, :, [0, 1]],
-            f[0, :, [1, 2]],
-            f[0, :, [2, 0]]
-        ], dim=0).t()  # Shape: [2, num_edges]
+            f[0, :, [0, 1]],  # Forward edge: 0 -> 1
+            f[0, :, [1, 2]],  # Forward edge: 1 -> 2
+            f[0, :, [2, 0]],  # Forward edge: 2 -> 0
+            f[0, :, [1, 0]],  # Reverse edge: 1 -> 0
+            f[0, :, [2, 1]],  # Reverse edge: 2 -> 1
+            f[0, :, [0, 2]]   # Reverse edge: 0 -> 2
+        ], dim=0).t()  # Shape: [2, num_edges * 2]
         assert edge_list.dim() == 2 and edge_list.size(0) == 2, f"Expected edge_list to be [2, num_edges], got {edge_list.shape}"
 
         # Add self-loops to the edge list
@@ -471,7 +474,7 @@ class TCSRVC(nn.Module):
         self.edge_list = edge_list
 
         # Set data in block1; 't' is handled per step
-        self.block1.set_data(x, V, f=f, edge_list=edge_list, t=None)  # 't' is handled per step
+        self.block1.set_data(x, V, f=f, edge_list=edge_list)  # 't' is handled per step
 
     def forward(self, x, t, hidden_states=None):
         """
