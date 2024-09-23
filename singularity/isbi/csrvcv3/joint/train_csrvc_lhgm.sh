@@ -76,7 +76,7 @@ python trainCSRandParcellation.py \
     --gat_heads $gat_head \
     --train_type 'surfandseg' \
     --data_dir '/speedrun/cortexode-data-rp/' \
-    --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0model/' \
+    --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
     --data_name 'hcp' \
     --surf_hemi 'lh' \

@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -n 1
-#SBATCH -c 16
-#SBATCH --mem=110g
+#SBATCH -c 4
+#SBATCH --mem=20g
 #SBATCH -p qTRDGPUH
-#SBATCH --gres=gpu:A100:1
+#SBATCH --gres=gpu:V100:1
 #SBATCH -t 5-00:00
 #SBATCH -J csrvcrh
 #SBATCH -e jobs/error%A_%a.err
@@ -18,26 +18,15 @@ sleep 5s
 
 module load singularity/3.10.2
 
-# Launch the training script inside the Singularity container
 singularity exec --nv \
     --bind /data,\
 /data/users2/washbee/speedrun/:/speedrun,\
 /data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
     /data/users2/washbee/containers/csrf_sandbox/ \
-    /cortexode/singularity/isbi/csrvc3/joint/train_csrvc_rhgm.sh $SLURM_ARRAY_TASK_ID &
-
-pid1=$!  # Store the process ID of the second process
-
-singularity exec --nv \
-    --bind /data,\
-/data/users2/washbee/speedrun/:/speedrun,\
-/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
-    /data/users2/washbee/containers/csrf_sandbox/ \
-    /cortexode/singularity/isbi/csrvc3/joint/train_csrvc_rhwm.sh $SLURM_ARRAY_TASK_ID &
+    /cortexode/singularity/isbi/csrvcv3/joint/train_csrvc_rhwm.sh $SLURM_ARRAY_TASK_ID &
 
 pid2=$!  # Store the process ID of the second process
 
-wait $pid1
 wait $pid2
 
 

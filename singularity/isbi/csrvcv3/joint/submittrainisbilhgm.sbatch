@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -n 1
-#SBATCH -c 8
-#SBATCH --mem=55g
+#SBATCH -c 4
+#SBATCH --mem=20g
 #SBATCH -p qTRDGPUH
 #SBATCH --gres=gpu:V100:1
 #SBATCH -t 5-00:00
@@ -28,19 +28,6 @@ singularity exec --nv \
 
 pid3=$!  # Store the process ID of the second process
 
-singularity exec --nv \
-    --bind /data,\
-/data/users2/washbee/speedrun/:/speedrun,\
-/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
-    /data/users2/washbee/containers/csrf_sandbox/ \
-    /cortexode/singularity/isbi/csrvcv3/joint/train_csrvc_lhwm.sh $SLURM_ARRAY_TASK_ID &
-
-pid4=$!  # Store the process ID of the second process
-
-
 wait $pid3
-wait $pid4
-
-
 
 sleep 10s

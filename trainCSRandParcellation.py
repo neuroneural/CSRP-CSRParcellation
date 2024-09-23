@@ -107,6 +107,7 @@ def train_surf(config):
 
     # Initialize the model
     if config.model_type == 'csrvc' and config.version == '2':
+        assert False, "sanity check"
         cortexode = CSRVCV2(dim_h=C,
                             kernel_size=K,
                             n_scale=Q,
