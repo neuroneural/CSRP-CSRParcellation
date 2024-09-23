@@ -214,7 +214,11 @@ class CSRVCV3(nn.Module):
 
         edge_list = torch.cat([self.f[0, :, [0, 1]],
                                self.f[0, :, [1, 2]],
-                               self.f[0, :, [2, 0]]], dim=0).t()
+                               self.f[0, :, [2, 0]],
+                               self.f[0, :, [1, 0]],
+                               self.f[0, :, [2, 1]],
+                               self.f[0, :, [0, 2]],
+                               ], dim=0).t()
 
         edge_list = add_self_loops(edge_list)[0]
         

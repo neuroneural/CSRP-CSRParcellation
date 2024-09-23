@@ -81,9 +81,9 @@ python trainCSRandParcellation.py \
     --data_name 'hcp' \
     --surf_hemi 'lh' \
     --surf_type 'wm' \
-    --n_epochs 401 \
+    --n_epochs 101 \
     --start_epoch 1 \
     --tag 'vc' \
     --device 'cuda' \
     --classification_loss_threshold .04 \
-    --classification_loss_weight 10.0
+    --classification_loss_weight 1.0
