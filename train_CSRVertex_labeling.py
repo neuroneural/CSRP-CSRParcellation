@@ -22,6 +22,8 @@ from plyfile import PlyData, PlyElement
 from data.preprocess import process_surface_inverse
 from scipy.spatial import cKDTree
 
+from model.csrvcv3 import CSRVCV3  # Updated import
+
 def chamfer_distance(v1, v2):
     
     kdtree1 = cKDTree(v1)
@@ -104,6 +106,7 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
         
         csrvcnet.set_data(v_gt, volume_in, f=f_gt)
         logits = csrvcnet(v_gt)
+        
         preds = torch.argmax(logits, dim=2)
         preds = preds.squeeze(0)
         mesh = Meshes(verts=v_gt, faces=f_gt)
@@ -174,6 +177,15 @@ def train_surfvc(config):
                        num_classes=num_classes,
                        use_pytorch3d=use_pytorch3d_normal
                        ).to(device)
+    elif config.model_type == 'csrvc' and config.version == '3':
+        csrvcnet = CSRVCV3(dim_h=C,
+                            kernel_size=K,
+                            n_scale=Q,
+                            sf=config.sf,
+                            gnn_layers=config.gnn_layers,
+                            use_gcn=use_gcn,
+                            gat_heads=config.gat_heads,
+                            num_classes=num_classes).to(device)
     else:
         assert False, "your config arguments don't match this file."
     
@@ -233,10 +245,15 @@ def train_surfvc(config):
             v_in = v_in.to(device)
             f_in = f_in.to(device)
             labels = labels.to(device)  # Ensure labels are moved to the device
-
             csrvcnet.set_data(v_in, volume_in, f=f_in)  # Set the input data
-
-            logits = csrvcnet(v_in)  # Forward pass
+                
+            if config.model_type == 'csrvc' and config.version == '3':
+                # No initial_state or features_in needed
+                # Integrate over time
+                _ = csrvcnet(None, v_in) #deformation not being trained here. 
+                logits = csrvcnet.get_class_logits()
+            else:
+                logits = csrvcnet(v_in)  # Forward pass
 
             # Reshape logits to match the shape required for CrossEntropyLoss
             logits = logits.permute(0, 2, 1)  # [batch_size, num_vertices, num_classes] -> [batch_size, num_classes, num_vertices]
