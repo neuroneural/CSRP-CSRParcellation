@@ -7,7 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from data.vc_dataloader2 import CSRVertexLabeledDataset  # Ensure this matches your data loader path
 from model.csrvertexclassification import CSRVCNet
-
+from data.datautil import decode_names
 from util.mesh import compute_dice
 
 import logging
@@ -21,7 +21,7 @@ from config import load_config
 from plyfile import PlyData, PlyElement
 from data.preprocess import process_surface_inverse
 from scipy.spatial import cKDTree
-
+import nibabel as nib
 from model.csrvcv3 import CSRVCV3  # Updated import
 
 def chamfer_distance(v1, v2):
@@ -44,33 +44,74 @@ def get_num_classes(atlas):
     }
     return atlas_num_classes.get(atlas, 0)
 
-def save_mesh_with_annotations(mesh, labels, save_path, color_map, data_name='hcp'):
-    
-    verts, faces = process_surface_inverse(mesh.verts_packed().squeeze().cpu().numpy(), mesh.faces_packed().squeeze().cpu().numpy(), data_name)
-    assert verts.shape[0] != 1 
-    assert faces.shape[0] != 1 
-    invalid_mask = (labels < 0) | (labels >= color_map.size(1))
-    
-    if invalid_mask.any():
-        print(f"Invalid labels found: {labels[invalid_mask]}")
-        labels[invalid_mask] = 0  # Assign a default valid label
 
+def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_name='hcp'):
+    # Convert tensors to numpy arrays and ensure correct shapes
+    verts = verts.squeeze()
+    faces = faces.squeeze()
+    print("Original verts shape:", verts.shape)
+    # Assert that verts should have shape (V, 3)
+    assert verts.dim() == 2 and verts.shape[1] == 3, "Verts should have shape (V, 3)"
+    verts = verts.squeeze().cpu().numpy()
+    print("Processed verts shape after squeeze and numpy conversion:", verts.shape)
+    # Assert that verts now have shape (V, 3)
+    assert verts.ndim == 2 and verts.shape[1] == 3, "Processed verts should have shape (V, 3)"
+    
+    print("Original faces shape:", faces.shape)
+    # Assert that faces should have shape (F, 3)
+    assert faces.dim() == 2 and faces.shape[1] == 3, "Faces should have shape (F, 3)"
+    faces = faces.squeeze().long().cpu().numpy()
+    print("Processed faces shape after squeeze, long, and numpy conversion:", faces.shape)
+    # Assert that faces now have shape (F, 3)
+    assert faces.ndim == 2 and faces.shape[1] == 3, "Processed faces should have shape (F, 3)"
+    
+    # Process the surface if needed
+    verts, faces = process_surface_inverse(verts, faces, data_name)
+    print("Verts shape after process_surface_inverse:", verts.shape)
+    print("Faces shape after process_surface_inverse:", faces.shape)
+    # Assert that verts and faces still have correct shapes
+    assert verts.ndim == 2 and verts.shape[1] == 3, "Verts after processing should have shape (V, 3)"
+    assert faces.ndim == 2 and faces.shape[1] == 3, "Faces after processing should have shape (F, 3)"
+    
+    # Process labels
+    print("Original labels shape:", labels.shape)
+    # Assert that labels should be 1D or 2D with one column
+    assert labels.dim() in [1, 2], "Labels should be 1D or 2D tensor"
     labels = labels.squeeze().long().cpu().numpy()
-    assert labels.shape[0] != 1
-    vertex_colors = color_map[0, labels, :].cpu().numpy()
-    vertex_colors = vertex_colors.squeeze()
+    print("Processed labels shape after squeeze, long, and numpy conversion:", labels.shape)
+    # Assert that labels now have shape (V,)
+    assert labels.ndim == 1 and labels.shape[0] == verts.shape[0], "Labels should have shape (V,)"
+    
+    # Remap labels of class 4 to -1
+    labels[labels == 4] = -1
+    print("Labels after remapping class 4 to -1:", np.unique(labels))
+    
+    # Ensure color table (ctab) is correctly sized
+    print("Original ctab shape:", ctab.shape)
+    # Assert that ctab should have shape (1, N, 5)
+    assert ctab.dim() == 3 and ctab.shape[2] == 5, "ctab should have shape (1, N, 5)"
+    ctab = ctab.squeeze().long().cpu().numpy()
+    print("Processed ctab shape after squeeze, long, and numpy conversion:", ctab.shape)
+    # Assert that ctab now has shape (N, 5)
+    assert ctab.ndim == 2 and ctab.shape[1] == 5, "ctab should have shape (N, 5)"
+    
+    # Decode names for the annotation file
+    names = decode_names()
+    print("Names decoded for annotation file:", names)
+    # Assert that the number of names matches the number of labels in ctab
+    assert len(names) == ctab.shape[0], "Number of names must match number of labels in ctab"
+    
+    # Save the surface geometry
+    nib.freesurfer.write_geometry(save_path_fs + '.surf', verts, faces)
+    print(f"Saved surface geometry to {save_path_fs}.surf")
+    
+    # Save the annotation file
+    nib.freesurfer.write_annot(save_path_fs + '.annot', 
+                               labels,
+                               ctab,
+                               names, fill_ctab=False)
+    print(f"Saved annotation file to {save_path_fs}.annot")
 
-    vertices = np.array([(*verts[i], *vertex_colors[i]) for i in range(len(verts))],
-                        dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4'), 
-                               ('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
-
-    faces = np.array([(faces[i],) for i in range(len(faces))],
-                      dtype=[('vertex_indices', 'i4', (3,))])
-
-    vertex_element = PlyElement.describe(vertices, 'vertex')
-    face_element = PlyElement.describe(faces, 'face')
-
-    PlyData([vertex_element, face_element], text=True).write(save_path)#replace with freeview compatible stl file and annotation file.
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
     dice_scores = []
@@ -125,10 +166,12 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
         preds = preds.squeeze(0)
         mesh = Meshes(verts=v_gt, faces=f_gt)
         save_path = os.path.join(result_dir, f"annotated_mesh_gtpred_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
-        save_mesh_with_annotations(mesh, preds, save_path, color_map)
+        save_mesh_with_annotations(v_gt,f_gt, preds,color_map, save_path, data_name='hcp' )
+                                  
         print(f"Saved predicted annotated mesh for subject {subid[0]} to {save_path}")
         save_path = os.path.join(result_dir, f"annotated_mesh_gtfs_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
-        save_mesh_with_annotations(mesh, labels, save_path, color_map)
+        save_mesh_with_annotations(v_gt,f_gt, labels,color_map, save_path, data_name='hcp' )
+        
         print(f"Saved freesurfer gt annotated mesh for subject {subid[0]} to {save_path}") 
 
 def train_surfvc(config):
@@ -254,7 +297,6 @@ def train_surfvc(config):
         avg_loss = []
         subs = 0
         for idx, data in enumerate(trainloader):
-            break
             volume_in, v_in, f_in, labels, subid, color_map = data  # Ensure this matches your data loader output
 
             optimizer.zero_grad()
@@ -389,8 +431,9 @@ def train_surfvc(config):
                         })
 
                 # Call the visualization method if needed
-                if visualize:
-                    visualize_and_save_mesh(csrvcnet, validloader, config.result_dir, device, config, epoch)
+        if epoch == start_epoch or epoch == n_epochs or epoch % 50 == 0: 
+            if visualize:
+                visualize_and_save_mesh(csrvcnet, validloader, config.result_dir, device, config, epoch)
 
         # save model checkpoints 
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
@@ -415,8 +458,6 @@ def train_surfvc(config):
         assert False, 'update naming conventions for model file name'
     
     torch.save(csrvcnet.state_dict(), os.path.join(model_dir, final_model_filename))
-    print('saving meshes')
-    # Save visualizations if needed
             
 if __name__ == '__main__':
     mp.set_start_method('spawn')
