@@ -78,6 +78,8 @@ python trainCSRandParcellation.py \
     --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
+    --compute_reconstruction_loss 'no' \
+    --compute_classification_loss 'yes' \
     --data_name 'hcp' \
     --surf_hemi 'lh' \
     --surf_type 'gm' \

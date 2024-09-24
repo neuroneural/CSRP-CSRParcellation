@@ -13,6 +13,11 @@ def load_config():
     parser.add_argument('--model_type2', default="baseline", type=str, help="either: [csrf, cortexode]")
     parser.add_argument('--segmentation_model_path', default="", type=str, help="path for segmentation model.")
     
+    parser.add_argument('--compute_reconstruction_loss', type=str, default='yes',
+                        help='Flag to compute reconstruction loss (default: yes).')
+    parser.add_argument('--compute_classification_loss', type=str, default='no',
+                        help='Flag to compute classification loss (default: no).')
+    
     parser.add_argument('--seg_model_type', default="SegUnet", type=str, help="either: [SwinUNETR, MonaiUnet, SegUnet]")
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--gm_model_file', default=None, type=str, help="File for resuming models.")

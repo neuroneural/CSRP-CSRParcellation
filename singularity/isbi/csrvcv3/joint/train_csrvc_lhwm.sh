@@ -74,6 +74,8 @@ python trainCSRandParcellation.py \
     --gnn $gnn \
     --gnn_layers $gnn_layer \
     --gat_heads $gat_head \
+    --compute_reconstruction_loss 'yes' \
+    --compute_classification_loss 'yes' \
     --train_type 'surfandseg' \
     --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \

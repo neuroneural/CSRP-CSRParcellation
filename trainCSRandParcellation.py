@@ -19,8 +19,6 @@ import re
 import os
 import csv
 import torch.multiprocessing as mp
-# Removed ReduceLROnPlateau import
-# from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from scipy.spatial import cKDTree
 
@@ -78,11 +76,15 @@ def train_surf(config):
     
     num_classes = config.num_classes  # Number of classes for classification
     
-    # Threshold for starting classification loss computation
-    classification_loss_threshold = config.classification_loss_threshold  # e.g., 0.04
+    # Threshold for starting classification loss computation (removed as per the modifications)
+    # classification_loss_threshold = config.classification_loss_threshold  # e.g., 0.04
     
     # Loss weight for classification loss
     classification_loss_weight = config.classification_loss_weight  # e.g., 1.0
+    
+    # Add configuration flags to control loss computation
+    compute_reconstruction_loss = config.compute_reconstruction_loss == 'yes'  # True or False
+    compute_classification_loss = config.compute_classification_loss == 'yes'  # True or False
     
     # Create log file
     log_filename = os.path.join(model_dir,f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_{solver}")
@@ -107,7 +109,7 @@ def train_surf(config):
 
     # Initialize the model
     if config.model_type == 'csrvc' and config.version == '2':
-        assert False, "sanity check"
+        assert False,'sanity check'
         cortexode = CSRVCV2(dim_h=C,
                             kernel_size=K,
                             n_scale=Q,
@@ -126,9 +128,8 @@ def train_surf(config):
                             gat_heads=config.gat_heads,
                             num_classes=num_classes).to(device)
     elif config.model_type == "csrvc" and config.version == '4':
-        assert False, 'for sanity'
-        assert int(Q) == 3, f"{Q} for safety"
-        assert int(K) == 5, f"{K} for safety"
+        assert False,'sanity check'
+        
         cortexode = CSRVCSPLITGNN(dim_h=C,
                             kernel_size=K,
                             n_scale=Q,
@@ -150,9 +151,6 @@ def train_surf(config):
             print("No model file provided or file does not exist. Starting from scratch.")
 
     optimizer = optim.Adam(cortexode.parameters(), lr=lr)
-    # Removed scheduler initialization
-    # patience = int(config.patience) if config.patience != "standard" else 0
-    # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=patience, verbose=True)
 
     T = torch.Tensor([0, 1]).to(device)    # Integration time interval for ODE
 
@@ -165,9 +163,6 @@ def train_surf(config):
 
     trainloader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=4)
     validloader = DataLoader(validset, batch_size=1, shuffle=False, num_workers=4)
-
-    # Flag to indicate whether to compute classification loss
-    compute_classification_loss = False
 
     # --------------------------
     # Training
@@ -183,7 +178,6 @@ def train_surf(config):
             optimizer.zero_grad()
 
             # Move data to device
-            # Move data to device and ensure float dtype
             volume_in = volume_in.to(device).float()
             v_in = v_in.to(device).float()
             v_gt = v_gt.to(device).float()
@@ -191,67 +185,48 @@ def train_surf(config):
             f_gt = f_gt.to(device).long()
             labels = labels.to(device).long()
 
-            # Set initial state and data
-            cortexode.set_data(v_in, volume_in, f=f_in)
-            # No initial_state or features_in needed
-
-            # Integrate over time
-            v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
+            total_loss = 0  # Initialize total loss
 
             # Reconstruction Loss
-            if surf_type == 'wm':
-                # Chamfer Distance Loss on vertices
-                chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
-                reconstruction_loss = chamfer_loss
-            elif surf_type == 'gm':
-                # MSE Loss between vertex positions
-                mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
-                reconstruction_loss = mse_loss
+            if compute_reconstruction_loss:
+                # Set initial state and data
+                cortexode.set_data(v_in, volume_in, f=f_in)
 
-            total_loss = reconstruction_loss
+                # Integrate over time
+                v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
 
-            # Check if reconstruction loss is below threshold
-            if not compute_classification_loss and reconstruction_loss.item() < classification_loss_threshold:
-                compute_classification_loss = True
-                print(f"Reconstruction loss below threshold at epoch {epoch}, batch {idx}. Starting classification loss computation.")
-
-            if compute_classification_loss:
-                # Perform KDTree nearest neighbor search to assign labels
-                v_out_np = v_out.squeeze(0).detach().cpu().numpy()
-                v_gt_np = v_gt.squeeze(0).cpu().numpy()
-
-                # Build KDTree from ground truth pial surface vertices
+                # Compute reconstruction loss as before
                 if surf_type == 'wm':
-                    kd_tree = cKDTree(v_gt_np)
+                    chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
+                    reconstruction_loss = chamfer_loss
+                elif surf_type == 'gm':
+                    mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
+                    reconstruction_loss = mse_loss
 
-                    # For each predicted vertex, find nearest ground truth vertex
-                    distances, indices = kd_tree.query(v_out_np)
+                total_loss += reconstruction_loss
 
-                    # Obtain labels from ground truth labels
-                    labels_np = labels.squeeze(0).cpu().numpy()
-                    gt_labels = labels_np[indices]
-                else:
-                    gt_labels = labels.squeeze(0).cpu().numpy()#correspondence can be exploited. 
-                
-                # Convert labels to tensor
-                #gt_labels = torch.from_numpy(gt_labels).long().to(device)
+            # Classification Loss
+            if compute_classification_loss:
+                # Set data for classification
+                cortexode.set_data(v_in, volume_in, f=f_in)
 
-                # Retrieve classification logits
-                # Convert labels to tensor
-                gt_labels = torch.from_numpy(gt_labels).long().to(device)
+                # Perform forward pass to get class logits without ODE integration
+                _ = cortexode(None, v_in)  # Skip ODE integration
 
-                # Retrieve classification logits
                 class_logits = cortexode.get_class_logits()
-                # Remove the unsqueeze(0) as it's causing the size mismatch
-                # Compute classification loss
+                class_logits = class_logits.unsqueeze(0)
                 class_logits = class_logits.permute(0, 2, 1)  # Reshape logits
-                print("class_logits.shape,gt_labels.shape")
-                print(class_logits.shape,gt_labels.shape)
-                classification_loss = nn.CrossEntropyLoss()(class_logits, gt_labels)
-                
-                # Total Loss (add classification loss)
+
+                # Ensure labels are within valid range
+                if torch.any(labels < 0) or torch.any(labels >= num_classes):
+                    print(f"Invalid label detected in batch {idx} of epoch {epoch}")
+                    print(f"Labels range: {labels.min()} to {labels.max()}")
+                    continue  # Skip this batch
+
+                # Compute classification loss
+                classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
                 total_loss += classification_loss_weight * classification_loss
-            
+
             avg_loss.append(total_loss.item())
             total_loss.backward()
             optimizer.step()
@@ -264,11 +239,11 @@ def train_surf(config):
                 total_valid_error = []
                 recon_valid_error = []
                 dice_valid_error = []
-                classification_valid_error= []
+                classification_valid_error = []
                 for idx, data in enumerate(validloader):
                     volume_in, v_in, v_gt, f_in, f_gt, labels = data
 
-                    # Move data to device and ensure float dtype
+                    # Move data to device
                     volume_in = volume_in.to(device).float()
                     v_in = v_in.to(device).float()
                     v_gt = v_gt.to(device).float()
@@ -276,66 +251,61 @@ def train_surf(config):
                     f_gt = f_gt.to(device).long()
                     labels = labels.to(device).long()
 
+                    total_valid_loss = 0
+                    recon_valid_loss = 0
 
-                    # Set initial state and data
-                    cortexode.set_data(v_in, volume_in, f=f_in)
-                    # No initial_state or features_in needed
+                    if compute_reconstruction_loss:
+                        # Set initial state and data
+                        cortexode.set_data(v_in, volume_in, f=f_in)
 
-                    # Integrate over time
-                    v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
+                        # Integrate over time
+                        v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
 
-                    # Reconstruction Loss
-                    if surf_type == 'wm':
-                        # Chamfer Distance Loss on vertices
-                        # chamfer_loss = 1e3 * chamfer_distance(v_out.squeeze(0), v_gt.squeeze(0))[0]
-                        chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
-                        reconstruction_loss = chamfer_loss
-                    elif surf_type == 'gm':
-                        # MSE Loss between vertex positions
-                        mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
-                        reconstruction_loss = mse_loss
-
-                    total_valid_loss = reconstruction_loss.item()
-                    recon_valid_loss = reconstruction_loss.item()
-                    dice_score = -1.0 # unless calculated make negative since higher is better. 
-                    if compute_classification_loss:
-                        # Perform KDTree nearest neighbor search to assign labels
-                        v_out_np = v_out.squeeze(0).detach().cpu().numpy()
-                        v_gt_np = v_gt.squeeze(0).cpu().numpy()
-                        labels_np = labels.squeeze(0).cpu().numpy()
-
+                        # Compute reconstruction loss
                         if surf_type == 'wm':
-                            kd_tree = cKDTree(v_gt_np)
+                            chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
+                            reconstruction_loss = chamfer_loss
+                        elif surf_type == 'gm':
+                            mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
+                            reconstruction_loss = mse_loss
 
-                            # For each predicted vertex, find nearest ground truth vertex
-                            distances, indices = kd_tree.query(v_out_np)
+                        total_valid_loss += reconstruction_loss.item()
+                        recon_valid_loss = reconstruction_loss.item()
+                    else:
+                        # If not computing reconstruction loss, still need v_out for classification if needed
+                        v_out = v_in
 
-                            # Obtain labels from ground truth labels
-                            labels_np = labels.squeeze(0).cpu().numpy()
-                            gt_labels = labels_np[indices]
-                        else:
-                            gt_labels = labels.squeeze(0).cpu().numpy()#correspondence can be exploited. 
+                    if compute_classification_loss:
+                        # Set data for classification
+                        cortexode.set_data(v_gt, volume_in, f=f_in)
 
-                        logits = logits.permute(0, 2, 1)  # Reshape logits
-                        # Convert labels to tensor
-                        gt_labels = torch.from_numpy(gt_labels).long().to(device)
+                        # Perform forward pass to get class logits without ODE integration
+                        _ = cortexode(None, v_gt)
 
-                        # Retrieve classification logits
                         class_logits = cortexode.get_class_logits()
-                        # Remove the unsqueeze(0) as it's causing the size mismatch
-                        # Compute classification loss
-                        # print('val', class_logits.shape,gt_labels.shape)
-                        classification_loss = nn.CrossEntropyLoss()(class_logits, gt_labels)
-                        exclude_classes = [4] if config.atlas == 'aparc'or config.atlas == 'DKTatlas40' else []
-                        predicted_classes = torch.argmax(F.log_softmax(class_logits, dim=1), dim=1)
-                        dice_score = compute_dice(predicted_classes, gt_labels, num_classes, exclude_classes)
+                        class_logits = F.log_softmax(class_logits, dim=1)
+                        class_logits = class_logits.unsqueeze(0)
+                        class_logits = class_logits.permute(0, 2, 1)
 
+                        # Ensure labels are within valid range
+                        if torch.any(labels < 0) or torch.any(labels >= num_classes):
+                            print(f"Invalid label detected in validation batch {idx} of epoch {epoch}")
+                            print(f"Labels range: {labels.min()} to {labels.max()}")
+                            continue  # Skip this batch
+
+                        # Compute classification loss
+                        classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
                         total_valid_loss += classification_loss_weight * classification_loss.item()
+                        classification_valid_error.append(classification_loss.item())
+
+                        # Compute Dice score
+                        predicted_classes = torch.argmax(class_logits, dim=1)
+                        exclude_classes = [4] if config.atlas in ['aparc', 'DKTatlas40'] else []
+                        dice_score = compute_dice(predicted_classes, labels, num_classes, exclude_classes)
                         dice_valid_error.append(dice_score)
-                        classification_valid_error.append(classification_loss_weight * classification_loss.item())
+
                     total_valid_error.append(total_valid_loss)
                     recon_valid_error.append(recon_valid_loss)
-                    
 
                 logging.info('epoch:{}, total validation error:{}'.format(epoch, np.mean(total_valid_error)))
                 logging.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
@@ -368,6 +338,11 @@ if __name__ == '__main__':
     mp.set_start_method('spawn')
     config = load_config()
     if config.train_type == 'surfandseg':
+        # Add default values for new config options if they are not set
+        if not hasattr(config, 'compute_reconstruction_loss'):
+            config.compute_reconstruction_loss = True  # Default to True
+        if not hasattr(config, 'compute_classification_loss'):
+            config.compute_classification_loss = True  # Default to True
         train_surf(config)
     else:
         raise ValueError("Unsupported training type.")
