@@ -105,9 +105,23 @@ def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, ep
         labels = labels.to(device)
         
         csrvcnet.set_data(v_gt, volume_in, f=f_gt)
-        logits = csrvcnet(v_gt)
+        if config.model_type == 'csrvc' and config.version == '3':
+                # No initial_state or features_in needed
+                # Integrate over time
+                _ = csrvcnet(None, v_gt) #deformation not being trained here. 
+                logits = csrvcnet.get_class_logits()
+                logits = logits.unsqueeze(0)
+        else:    
+            logits = csrvcnet(v_gt)
         
+        assert logits.ndim == 3, f"Expected 3 dimensions, but got {logits.ndim} dimensions."
+        assert logits.shape[0] == 1, f"Expected 1 patient {logits.shape} shape."
+
         preds = torch.argmax(logits, dim=2)
+        # print('preds.shape',preds.shape)
+        assert preds.ndim == 2, f"Expected 3 dimensions, but got {preds.ndim} dimensions."
+        assert preds.shape[0] == 1, f"Expected 1 patient {preds.shape} shape."
+
         preds = preds.squeeze(0)
         mesh = Meshes(verts=v_gt, faces=f_gt)
         save_path = os.path.join(result_dir, f"annotated_mesh_gtpred_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
@@ -169,15 +183,9 @@ def train_surfvc(config):
     
     use_pytorch3d_normal = config.use_pytorch3d_normal != 'no'
     
-    if config.model_type == 'csrvc':
-        csrvcnet = CSRVCNet(dim_h=C, kernel_size=K, n_scale=Q,
-                       gnn_layers=config.gnn_layers,
-                       use_gcn=use_gcn,
-                       gat_heads=config.gat_heads,
-                       num_classes=num_classes,
-                       use_pytorch3d=use_pytorch3d_normal
-                       ).to(device)
-    elif config.model_type == 'csrvc' and config.version == '3':
+    print("config.model_type, config.version")
+    print(config.model_type,config.version)
+    if config.model_type == 'csrvc' and config.version == '3':
         csrvcnet = CSRVCV3(dim_h=C,
                             kernel_size=K,
                             n_scale=Q,
@@ -186,6 +194,15 @@ def train_surfvc(config):
                             use_gcn=use_gcn,
                             gat_heads=config.gat_heads,
                             num_classes=num_classes).to(device)
+    elif config.model_type == 'csrvc':
+        assert False, "sanity check"
+        csrvcnet = CSRVCNet(dim_h=C, kernel_size=K, n_scale=Q,
+                       gnn_layers=config.gnn_layers,
+                       use_gcn=use_gcn,
+                       gat_heads=config.gat_heads,
+                       num_classes=num_classes,
+                       use_pytorch3d=use_pytorch3d_normal
+                       ).to(device)
     else:
         assert False, "your config arguments don't match this file."
     
@@ -237,6 +254,7 @@ def train_surfvc(config):
         avg_loss = []
         subs = 0
         for idx, data in enumerate(trainloader):
+            break
             volume_in, v_in, f_in, labels, subid, color_map = data  # Ensure this matches your data loader output
 
             optimizer.zero_grad()
@@ -252,12 +270,16 @@ def train_surfvc(config):
                 # Integrate over time
                 _ = csrvcnet(None, v_in) #deformation not being trained here. 
                 logits = csrvcnet.get_class_logits()
+                logits = logits.unsqueeze(0)#it appears i'm missing a dimension of logits, probably a trivial one representing the batch that is never used
             else:
                 logits = csrvcnet(v_in)  # Forward pass
+            print('logits.shape',logits.shape)
+            assert logits.ndim == 3, f"Expected 3 dimensions, but got {logits.ndim} dimensions."
+            assert logits.shape[0] == 1, f"Expected 1 patient {logits.shape} shape."
 
             # Reshape logits to match the shape required for CrossEntropyLoss
             logits = logits.permute(0, 2, 1)  # [batch_size, num_vertices, num_classes] -> [batch_size, num_classes, num_vertices]
-
+            
             # Ensure labels are within the valid range
             if torch.any(labels < 0) or torch.any(labels >= num_classes):
                 print(f"Invalid label detected in batch {idx} of epoch {epoch}")
@@ -288,8 +310,19 @@ def train_surfvc(config):
                     labels = labels.to(device)  # Ensure labels are moved to the device
 
                     csrvcnet.set_data(v_in, volume_in, f=f_in)  # Set the input data
+                    if config.model_type == 'csrvc' and config.version == '3':
+                        # No initial_state or features_in needed
+                        # Integrate over time
+                        _ = csrvcnet(None, v_in) #deformation not being trained here. 
+                        logits = csrvcnet.get_class_logits()
+                        logits = logits.unsqueeze(0)#it appears i'm missing a dimension of logits, probably a trivial one representing the batch that is never used
+                    else:
+                        logits = csrvcnet(v_in)  # Forward pass
+                    print('logits.shape',logits.shape)
+            
+                    assert logits.ndim == 3, f"Expected 3 dimensions, but got {logits.ndim} dimensions."
+                    assert logits.shape[0] == 1, f"Expected 1 patient {logits.shape} shape."
 
-                    logits = csrvcnet(v_in)  # Forward pass
                     logits = logits.permute(0, 2, 1)  # Reshape logits
 
                     if torch.any(labels < 0) or torch.any(labels >= num_classes):
@@ -299,7 +332,7 @@ def train_surfvc(config):
 
                     valid_loss = nn.CrossEntropyLoss()(logits, labels).item()
                     valid_error.append(valid_loss)
-
+                    
                     # Calculate Dice score
                     preds = torch.argmax(logits, dim=1)  # Get predicted labels
                     dice_score = compute_dice(preds, labels, num_classes, exclude_classes)
