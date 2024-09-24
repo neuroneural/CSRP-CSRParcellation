@@ -1,11 +1,11 @@
 #!/bin/bash
 #SBATCH -n 1
-#SBATCH -c 8
-#SBATCH --mem=55g
+#SBATCH -c 4
+#SBATCH --mem=22g
 #SBATCH -p qTRDGPUH
 #SBATCH --gres=gpu:V100:1
 #SBATCH -t 5-00:00
-#SBATCH -J vcLGs
+#SBATCH -J vcLGslhgm
 #SBATCH -e jobs/error%A_%a.err
 #SBATCH -o jobs/out%A_%a.out
 #SBATCH -A psy53c17

@@ -8,7 +8,6 @@ from tqdm import tqdm
 from data.vc_dataloader2 import CSRVertexLabeledDataset  # Ensure this matches your data loader path
 from model.csrvertexclassification import CSRVCNet
 from data.datautil import decode_names
-from util.mesh import compute_dice
 
 import logging
 import os
@@ -23,6 +22,8 @@ from data.preprocess import process_surface_inverse
 from scipy.spatial import cKDTree
 import nibabel as nib
 from model.csrvcv3 import CSRVCV3  # Updated import
+
+import torch.nn.functional as F
 
 def chamfer_distance(v1, v2):
     
@@ -136,43 +137,59 @@ def compute_dice(pred, target, num_classes, exclude_classes=[]):
         
     return np.mean(dice_scores)
 
+
 def visualize_and_save_mesh(csrvcnet, dataloader, result_dir, device, config, epoch):
-    for idx, data in enumerate(dataloader):
-        volume_in, v_gt, f_gt, labels, subid, color_map = data
-        
-        volume_in = volume_in.to(device).float()
-        v_gt = v_gt.to(device)
-        f_gt = f_gt.to(device)
-        labels = labels.to(device)
-        
-        csrvcnet.set_data(v_gt, volume_in, f=f_gt)
-        if config.model_type == 'csrvc' and config.version == '3':
-                # No initial_state or features_in needed
-                # Integrate over time
-                _ = csrvcnet(None, v_gt) #deformation not being trained here. 
+    # Turn off gradients for inference and visualization
+    with torch.no_grad():  # This disables gradient tracking, saving memory
+        for idx, data in enumerate(dataloader):
+            volume_in, v_gt, f_gt, labels, subid, color_map = data
+
+            # Move data to device (CPU or GPU)
+            volume_in = volume_in.to(device).float()
+            v_gt = v_gt.to(device)
+            f_gt = f_gt.to(device)
+            labels = labels.to(device)
+
+            # Set data for the network
+            csrvcnet.set_data(v_gt, volume_in, f=f_gt)
+
+            # Get predictions/logits
+            if config.model_type == 'csrvc' and config.version == '3':
+                # Deformation not being trained here
+                _ = csrvcnet(None, v_gt)  # Perform the forward pass
                 logits = csrvcnet.get_class_logits()
-                logits = logits.unsqueeze(0)
-        else:    
-            logits = csrvcnet(v_gt)
-        
-        assert logits.ndim == 3, f"Expected 3 dimensions, but got {logits.ndim} dimensions."
-        assert logits.shape[0] == 1, f"Expected 1 patient {logits.shape} shape."
+                logits = torch.nn.functional.log_softmax(logits, dim=1)
+                logits = logits.unsqueeze(0)  # Adjust shape to add batch dimension
+            else:
+                logits = csrvcnet(v_gt)
 
-        preds = torch.argmax(logits, dim=2)
-        # print('preds.shape',preds.shape)
-        assert preds.ndim == 2, f"Expected 3 dimensions, but got {preds.ndim} dimensions."
-        assert preds.shape[0] == 1, f"Expected 1 patient {preds.shape} shape."
+            # Ensure the logits have the correct shape
+            assert logits.ndim == 3, f"Expected 3 dimensions, but got {logits.ndim} dimensions."
+            assert logits.shape[0] == 1, f"Expected 1 sample in the batch, but got shape {logits.shape[0]}."
 
-        preds = preds.squeeze(0)
-        mesh = Meshes(verts=v_gt, faces=f_gt)
-        save_path = os.path.join(result_dir, f"annotated_mesh_gtpred_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
-        save_mesh_with_annotations(v_gt,f_gt, preds,color_map, save_path, data_name='hcp' )
-                                  
-        print(f"Saved predicted annotated mesh for subject {subid[0]} to {save_path}")
-        save_path = os.path.join(result_dir, f"annotated_mesh_gtfs_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
-        save_mesh_with_annotations(v_gt,f_gt, labels,color_map, save_path, data_name='hcp' )
-        
-        print(f"Saved freesurfer gt annotated mesh for subject {subid[0]} to {save_path}") 
+            # Get the predicted classes (argmax over classes)
+            preds = torch.argmax(logits, dim=2)
+
+            # Ensure the predictions have the correct shape
+            assert preds.ndim == 2, f"Expected 2 dimensions for predictions, but got {preds.ndim} dimensions."
+            assert preds.shape[0] == 1, f"Expected 1 sample in the batch, but got shape {preds.shape[0]}."
+
+            # Squeeze the batch dimension
+            preds = preds.squeeze(0)
+
+            # Create mesh object for saving
+            mesh = Meshes(verts=v_gt, faces=f_gt)
+
+            # Save predicted annotated mesh
+            save_path = os.path.join(result_dir, f"annotated_mesh_gtpred_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+            save_mesh_with_annotations(v_gt, f_gt, preds, color_map, save_path, data_name='hcp')
+            print(f"Saved predicted annotated mesh for subject {subid[0]} to {save_path}")
+
+            # Save ground truth annotated mesh
+            save_path = os.path.join(result_dir, f"annotated_mesh_gtfs_{subid[0]}_{config.surf_hemi}_{config.surf_type}_layers{config.gnn_layers}_epoch{epoch}.ply")
+            save_mesh_with_annotations(v_gt, f_gt, labels, color_map, save_path, data_name='hcp')
+            print(f"Saved FreeSurfer ground truth annotated mesh for subject {subid[0]} to {save_path}")
+ 
 
 def train_surfvc(config):
     """
@@ -188,8 +205,8 @@ def train_surfvc(config):
     surf_hemi = config.surf_hemi
     device = config.device
     tag = config.tag
-    visualize = config.visualize.lower() == 'yes'
-    
+    #visualize = config.visualize.lower() == 'yes'
+    visualize = False
     n_epochs = config.n_epochs
     start_epoch = config.start_epoch
     n_samples = config.n_samples
@@ -327,7 +344,7 @@ def train_surfvc(config):
                 print(f"Invalid label detected in batch {idx} of epoch {epoch}")
                 print(f"Labels range: {labels.min()} to {labels.max()}")
                 continue  # Skip this batch
-
+            
             loss = nn.CrossEntropyLoss()(logits, labels)  # Calculate classification loss
             
             avg_loss.append(loss.item())

@@ -143,7 +143,7 @@ class CombinedGNN(nn.Module):
         class_logits = self.classification_head(x)  # Output dimension [num_nodes, num_classes]
 
         # Apply log_softmax to class_logits
-        class_logits = F.log_softmax(class_logits, dim=1)
+        # class_logits = F.log_softmax(class_logits, dim=1)#this will be handled in loss now. 
 
         return dx, class_logits
 
