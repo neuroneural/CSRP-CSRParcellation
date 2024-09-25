@@ -83,7 +83,7 @@ python trainCSRandParcellation.py \
     --data_name 'hcp' \
     --surf_hemi 'lh' \
     --surf_type 'wm' \
-    --n_epochs 101 \
+    --n_epochs 401 \
     --start_epoch 1 \
     --tag 'vc' \
     --device 'cuda' \

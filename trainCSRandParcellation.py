@@ -24,6 +24,8 @@ from scipy.spatial import cKDTree
 
 import torch.nn.functional as F
 
+import random
+
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
     dice_scores = []
     pred = pred.cpu().numpy()
@@ -51,7 +53,7 @@ def train_surf(config):
     """
     Training CSRVCV2 for cortical surface reconstruction and classification.
     """
-    
+    rand_num = random.randint(100000, 999999)
     # --------------------------
     # Load configuration
     # --------------------------
@@ -86,8 +88,18 @@ def train_surf(config):
     compute_reconstruction_loss = config.compute_reconstruction_loss == 'yes'  # True or False
     compute_classification_loss = config.compute_classification_loss == 'yes'  # True or False
     
+    # Convert boolean values to strings for filename
+    recon_loss_str = 'recon' if compute_reconstruction_loss else 'norecon'
+    class_loss_str = 'class' if compute_classification_loss else 'noclass'
+
+
     # Create log file
-    log_filename = os.path.join(model_dir,f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_{solver}")
+    log_filename = os.path.join(
+        model_dir,
+        f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
+        f"{config.gnn_layers}_sf{config.sf}_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}"
+    )
+
     print('log_filename',log_filename)
     if config.gnn == 'gat':
         use_gcn = False
@@ -170,7 +182,8 @@ def train_surf(config):
 
     logging.info("Start training ...")
     for epoch in tqdm(range(start_epoch, n_epochs + 1)):
-        avg_loss = []
+        avg_recon_loss = []
+        avg_classification_loss = []
         for idx, data in enumerate(trainloader):
             # Unpack data
             volume_in, v_in, v_gt, f_in, f_gt, labels = data
@@ -185,8 +198,7 @@ def train_surf(config):
             f_gt = f_gt.to(device).long()
             labels = labels.to(device).long()
 
-            total_loss = 0  # Initialize total loss
-
+            
             # Reconstruction Loss
             if compute_reconstruction_loss:
                 # Set initial state and data
@@ -203,11 +215,13 @@ def train_surf(config):
                     mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
                     reconstruction_loss = mse_loss
 
-                total_loss += reconstruction_loss
-
+                reconstruction_loss.backward()
+                optimizer.step()
+                avg_recon_loss.append(reconstruction_loss.item())
+                        
             # Classification Loss
             if compute_classification_loss:
-                
+                optimizer.zero_grad()
                 cortexode.set_data(v_gt, volume_in, f=f_gt)
 
                 # Perform forward pass to get class logits without ODE integration
@@ -222,21 +236,22 @@ def train_surf(config):
                     print(f"Invalid label detected in batch {idx} of epoch {epoch}")
                     print(f"Labels range: {labels.min()} to {labels.max()}")
                     continue  # Skip this batch
-
+                    
                 # Compute classification loss
                 classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
-                total_loss += classification_loss_weight * classification_loss
+                classification_loss.backward()
+                optimizer.step()
+                avg_classification_loss.append(classification_loss.item())
 
-            avg_loss.append(total_loss.item())
-            total_loss.backward()
-            optimizer.step()
-
-        logging.info('epoch:{}, loss:{}'.format(epoch, np.mean(avg_loss)))
+            
+            
+        logging.info('epoch:{}, recon loss:{}'.format(epoch, np.mean(avg_recon_loss)))
+        logging.info('epoch:{}, classification loss:{}'.format(epoch, np.mean(avg_classification_loss)))
 
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             logging.info('-------------validation--------------')
             with torch.no_grad():
-                total_valid_error = []
+                
                 recon_valid_error = []
                 dice_valid_error = []
                 classification_valid_error = []
@@ -250,8 +265,7 @@ def train_surf(config):
                     f_in = f_in.to(device).long()
                     f_gt = f_gt.to(device).long()
                     labels = labels.to(device).long()
-
-                    total_valid_loss = 0
+                    
                     recon_valid_loss = 0
 
                     if compute_reconstruction_loss:
@@ -269,12 +283,8 @@ def train_surf(config):
                             mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
                             reconstruction_loss = mse_loss
 
-                        total_valid_loss += reconstruction_loss.item()
                         recon_valid_loss = reconstruction_loss.item()
-                    else:
-                        # If not computing reconstruction loss, still need v_out for classification if needed
-                        v_out = v_in
-
+                    
                     if compute_classification_loss:
                         # Set data for classification
                         cortexode.set_data(v_gt, volume_in, f=f_gt)
@@ -295,7 +305,6 @@ def train_surf(config):
 
                         # Compute classification loss
                         classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
-                        total_valid_loss += classification_loss_weight * classification_loss.item()
                         classification_valid_error.append(classification_loss.item())
 
                         # Compute Dice score
@@ -304,35 +313,47 @@ def train_surf(config):
                         dice_score = compute_dice(predicted_classes, labels, num_classes, exclude_classes)
                         dice_valid_error.append(dice_score)
 
-                    total_valid_error.append(total_valid_loss)
                     recon_valid_error.append(recon_valid_loss)
 
-                logging.info('epoch:{}, total validation error:{}'.format(epoch, np.mean(total_valid_error)))
                 logging.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
                 logging.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
                 logging.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
                 logging.info('-------------------------------------')
 
-        # Save model checkpoints
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             if config.gnn == 'gat':
-                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{epoch}epochs_{solver}.pt"
+                model_filename = (
+                    f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
+                    f"{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{epoch}epochs_{solver}_"
+                    f"{recon_loss_str}_{class_loss_str}_{rand_num}.pt"
+                )
             elif config.gnn == 'gcn':
-                model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}.pt"
+                model_filename = (
+                    f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
+                    f"{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}.pt"
+                )
             else:
-                assert False, 'update naming conventions for model file name'
+                assert False, 'Update naming conventions for model file name'
 
             torch.save(cortexode.state_dict(), os.path.join(model_dir, model_filename))
 
-    if config.gnn == 'gat':
-        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{solver}.pt"
-    elif config.gnn == 'gcn':
-        final_model_filename = f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers{config.gnn_layers}_sf{config.sf}_{solver}.pt"
-    else:
-        assert False, 'update naming conventions for model file name'
-
     # Save the final model
+    if config.gnn == 'gat':
+        final_model_filename = (
+            f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
+            f"{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{solver}_"
+            f"{recon_loss_str}_{class_loss_str}_{rand_num}.pt"
+        )
+    elif config.gnn == 'gcn':
+        final_model_filename = (
+            f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
+            f"{config.gnn_layers}_sf{config.sf}_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}.pt"
+        )
+    else:
+        assert False, 'Update naming conventions for model file name'
+
     torch.save(cortexode.state_dict(), os.path.join(model_dir, final_model_filename))
+
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
