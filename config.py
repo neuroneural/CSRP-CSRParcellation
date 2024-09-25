@@ -17,7 +17,7 @@ def load_config():
                         help='Flag to compute reconstruction loss (default: yes).')
     parser.add_argument('--compute_classification_loss', type=str, default='no',
                         help='Flag to compute classification loss (default: no).')
-    
+
     parser.add_argument('--seg_model_type', default="SegUnet", type=str, help="either: [SwinUNETR, MonaiUnet, SegUnet]")
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--gm_model_file', default=None, type=str, help="File for resuming models.")
@@ -89,9 +89,6 @@ def load_config():
     
     # Number of classes for classification
     parser.add_argument('--num_classes', default=36, type=int, help="number of classes in the atlas")
-    
-    # Classification loss threshold (for starting classification loss computation)
-    parser.add_argument('--classification_loss_threshold', default=0.04, type=float, help="threshold for starting classification loss")
     
     # Classification loss weight (to balance reconstruction and classification losses)
     parser.add_argument('--classification_loss_weight', default=1.0, type=float, help="weight for classification loss")

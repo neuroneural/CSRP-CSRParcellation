@@ -87,5 +87,4 @@ python trainCSRandParcellation.py \
     --start_epoch 1 \
     --tag 'vc' \
     --device 'cuda' \
-    --classification_loss_threshold .04 \
     --classification_loss_weight 1.0

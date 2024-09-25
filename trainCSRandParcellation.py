@@ -207,12 +207,12 @@ def train_surf(config):
 
             # Classification Loss
             if compute_classification_loss:
-                # Set data for classification
-                cortexode.set_data(v_in, volume_in, f=f_in)
+                
+                cortexode.set_data(v_gt, volume_in, f=f_gt)
 
                 # Perform forward pass to get class logits without ODE integration
-                _ = cortexode(None, v_in)  # Skip ODE integration
-
+                _ = cortexode(None, v_gt)
+                
                 class_logits = cortexode.get_class_logits()
                 class_logits = class_logits.unsqueeze(0)
                 class_logits = class_logits.permute(0, 2, 1)  # Reshape logits
@@ -277,7 +277,7 @@ def train_surf(config):
 
                     if compute_classification_loss:
                         # Set data for classification
-                        cortexode.set_data(v_gt, volume_in, f=f_in)
+                        cortexode.set_data(v_gt, volume_in, f=f_gt)
 
                         # Perform forward pass to get class logits without ODE integration
                         _ = cortexode(None, v_gt)
