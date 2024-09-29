@@ -43,7 +43,6 @@ if [ -z "$LINE" ]; then
 fi
 
 # Read the CSV line into variables
-# CSV columns: filename,surf_type,hemisphere,layers,solver,heads,version,random_number,model_type,classification,reconstruction,epoch,recon_error,dice_error
 IFS=',' read -r file_name surf_type hemisphere layers solver heads version random_number model_type classification reconstruction epoch recon_error dice_error <<< "$LINE"
 
 # Debugging: Print out the variables to verify correct assignment
@@ -78,7 +77,6 @@ recon_error=$(echo "$recon_error" | xargs)
 dice_error=$(echo "$dice_error" | xargs)
 
 # Extract data_name from file_name
-# Assuming data_name is the 3rd field when splitting by '_'
 data_name=$(echo "$file_name" | awk -F'_' '{print $3}')
 echo "data_name (extracted): $data_name"
 
@@ -104,11 +102,8 @@ echo "reconstruction_bool: $reconstruction_bool"
 echo "classification_bool: $classification_bool"
 
 # Construct the model filename based on the required pattern
-# Expected pattern:
-# model_{surf_type}_{data_name}_{hemisphere}_vc_{version}_{model_type}_layers{layers}_sf0.1_heads{heads}_{epoch}epochs_{solver}_{reconstruction_bool}_{classification_bool}_{random_number_int}.pt
-
 MODEL_FILE="model_${surf_type}_${data_name}_${hemisphere}_vc_${version}_${model_type}_layers${layers}_sf0.1_heads${heads}_${epoch}epochs_${solver}_${reconstruction_bool}_${classification_bool}_${random_number_int}.pt"
-MODEL_FILE_PATH="/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/${MODEL_FILE}"
+MODEL_DIR="/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/"
 echo "Constructed MODEL_FILE_PATH: $MODEL_FILE_PATH"
 
 # Define the save_basename by removing the .pt extension
@@ -116,36 +111,38 @@ SAVE_BASENAME="${MODEL_FILE%.pt}"
 echo "SAVE_BASENAME: $SAVE_BASENAME"
 
 # Check if the model file exists
-if [ ! -f "$MODEL_FILE_PATH" ]; then
-    echo "Model file not found at $MODEL_FILE_PATH. Skipping."
+if [ ! -f "${MODEL_DIR}${MODEL_FILE}" ]; then
+    echo "Model file not found at ${MODEL_DIR}${MODEL_FILE}. Skipping."
     exit 1
 fi
 
-# Execute the Python script inside the Singularity container
+# Path to your shell script that activates the Conda environment and runs the Python script
+INNER_SHELL_SCRIPT="/cortexode/isbianalysis/slurm/run_generate_surface.sh"
+
+# Execute the shell script inside the Singularity container
 singularity exec --nv \
     --bind /data,\
 /data/users2/washbee/speedrun/:/speedrun,\
 /data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
     /data/users2/washbee/containers/csrf_sandbox/ \
-    python /cortexode/isbianalysis/generateISBITestSurfaces.py \
-        --data_dir "/speedrun/cortexode-data-rp/" \ 
-        --surf_type "$surf_type" \
-        --data_name "$data_name" \
-        --hemisphere "$hemisphere" \
-        --version "$version" \
-        --model_type "$model_type" \
-        --layers "$layers" \
-        --heads "$heads" \
-        --epoch "$epoch" \
-        --solver "$solver" \
-        --reconstruction "$reconstruction_bool" \
-        --classification "$classification_bool" \
-        --random_number "$random_number_int" \
-        --model_file_path "$MODEL_FILE_PATH" \
-        --result_dir "/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/result/"
+    bash "$INNER_SHELL_SCRIPT" \
+        "$surf_type" \
+        "$data_name" \
+        "$hemisphere" \
+        "$version" \
+        "$model_type" \
+        "$layers" \
+        "$heads" \
+        "$epoch" \
+        "$solver" \
+        "$reconstruction_bool" \
+        "$classification_bool" \
+        "$random_number_int" \
+        "$MODEL_FILE" \
+        "$MODEL_DIR"
 
 # Wait for the singularity command to finish
 wait
 
 # Brief pause after completion
-sleep 10s
+sleep 5s

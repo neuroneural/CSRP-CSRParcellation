@@ -3,12 +3,13 @@ import re
 import nibabel as nib
 import trimesh
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
 from scipy.ndimage import distance_transform_cdt as cdt
 from skimage.measure import marching_cubes
 from skimage.measure import label as compute_cc
 from skimage.filters import gaussian
+
+
 
 import torch
 import torch.nn as nn
@@ -21,7 +22,7 @@ from data.datautil import decode_names
 from util.mesh import laplacian_smooth, compute_normal, compute_mesh_distance, check_self_intersect
 from util.tca import topology
 from model.net import Unet
-from model.csrvcv2 import CSRVCV2
+from model.csrvcv3 import CSRVCV3
 from config import load_config
 from data.csrandvcdataloader import SegDataset, BrainDataset
 from torch.utils.data import DataLoader
@@ -92,13 +93,13 @@ def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_na
 
 def load_model_and_weights(model_file, device, config):
     """
-    Load the CSRVCV2 model and its weights.
+    Load the CSRVCV3 model and its weights.
     """
     C = config.dim_h
     K = config.kernel_size
     Q = config.n_scale
     use_gcn = config.gnn == 'gcn'
-    model = CSRVCV2(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+    model = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
                     use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
     model.load_state_dict(torch.load(model_file, map_location=torch.device(device)))
     model.eval()
@@ -113,8 +114,8 @@ if __name__ == '__main__':
     model_dir = config.model_dir           # Directory of pretrained models
     init_dir = config.init_dir             # Directory for saving initial surfaces
     result_dir = config.result_dir         # Directory for saving predicted surfaces
-    data_name = args.data_name             # e.g., 'hcp', 'adni', 'dhcp'
-    surf_hemi = args.hemisphere            # 'lh', 'rh'
+    data_name = config.data_name             # e.g., 'hcp', 'adni', 'dhcp'
+    surf_hemi = config.surf_hemi            # 'lh', 'rh'
     device = config.device                 # e.g., 'cuda' or 'cpu'
     tag = config.tag                       # Identity of the experiment
 
@@ -123,20 +124,20 @@ if __name__ == '__main__':
     Q = config.n_scale                     # Multi-scale input
 
     step_size = config.step_size           # Step size of integration
-    solver = args.solver                   # ODE solver (e.g., 'euler', 'rk4')
+    solver = config.solver                   # ODE solver (e.g., 'euler', 'rk4')
     n_inflate = config.n_inflate           # Inflation iterations
     rho = config.rho                       # Inflation scale
 
     # ------ Load model-specific parameters from arguments ------
-    model_file_path = args.model_file_path  # Full path to the model .pt file
-    result_dir = args.result_dir      # Base name for saving outputs
+    model_file_path = os.path.join(config.model_dir,config.model_file) # Full path to the model .pt file
+    result_dir = config.result_dir      # Base name for saving outputs
 
     # ------ Load the segmentation network ------
     segnet = Unet(c_in=1, c_out=3).to(device)
-    segnet.load_state_dict(torch.load(os.path.join(model_dir, config.seg_model_file), map_location=torch.device(device)))
+    segnet.load_state_dict(torch.load(os.path.join(config.model_dir, config.seg_model_file), map_location=torch.device(device)))
     segnet.eval()
 
-    # ------ Load the CSRVCV2 model ------
+    # ------ Load the CSRVCV3 model ------
     if not os.path.exists(model_file_path):
         print(f"Model file {model_file_path} not found. Exiting.")
         exit(1)
@@ -148,8 +149,8 @@ if __name__ == '__main__':
     print(f"Processing model: {model_file_path}")
     print(f"Saving results to: {model_subdir}")
 
-    # Load the CSRVCV2 model
-    csrvcv2_model = load_model_and_weights(model_file_path, device, config)
+    # Load the CSRVCV3 model
+    CSRVCV3_model = load_model_and_weights(model_file_path, device, config)
 
     # ------ Prepare test data ------
     testset = SegDataset(config=config, data_usage='test')
@@ -206,17 +207,17 @@ if __name__ == '__main__':
         with torch.no_grad():
             v_in_tensor = torch.Tensor(v_in).unsqueeze(0).to(device)
             f_in_tensor = torch.LongTensor(f_in).unsqueeze(0).to(device)
-            csrvcv2_model.set_data(v_in_tensor, volume_in, f=f_in_tensor)
+            CSRVCV3_model.set_data(v_in_tensor, volume_in, f=f_in_tensor)
             T = torch.Tensor([0, 1]).to(device)
-            v_pred = odeint(csrvcv2_model, v_in_tensor, T, method=solver, options=dict(step_size=step_size))[-1]
+            v_pred = odeint(CSRVCV3_model, v_in_tensor, T, method=solver, options=dict(step_size=step_size))[-1]
 
             # Re-set data with the latest prediction for classification
-            csrvcv2_model.set_data(v_pred, volume_in, f=f_in_tensor)
-            _ = csrvcv2_model(T, v_pred)  # Forward pass to get classification logits
+            CSRVCV3_model.set_data(v_pred, volume_in, f=f_in_tensor)
+            _ = CSRVCV3_model(T, v_pred)  # Forward pass to get classification logits
 
             # Get classification logits if applicable
             if config.num_classes > 1:
-                class_logits = csrvcv2_model.get_class_logits()
+                class_logits = CSRVCV3_model.get_class_logits()
                 # Add LogSoftmax
                 log_softmax = nn.LogSoftmax(dim=1)
                 class_probs = log_softmax(class_logits)
@@ -230,7 +231,8 @@ if __name__ == '__main__':
 
         # ------ Save predicted surfaces and annotations -------
         # Determine surface type for naming and ctab
-        surf_type = surf_hemi  # 'wm' or 'gm'
+        surf_type = config.surf_type
+        surf_hemi = config.surf_hemi  # 'wm' or 'gm'
         if surf_type == 'wm':
             pred_surface_basename = f'{data_name}_{surf_hemi}_{subid}_wm_pred'
             ctab = ctab_wm
