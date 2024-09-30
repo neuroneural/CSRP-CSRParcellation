@@ -10,7 +10,6 @@ from skimage.measure import label as compute_cc
 from skimage.filters import gaussian
 
 
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -219,10 +218,12 @@ if __name__ == '__main__':
             if config.num_classes > 1:
                 class_logits = CSRVCV3_model.get_class_logits()
                 # Add LogSoftmax
-                log_softmax = nn.LogSoftmax(dim=1)
-                class_probs = log_softmax(class_logits)
+                class_logits = F.log_softmax(class_logits, dim=1)
+                class_logits = class_logits.unsqueeze(0)
+                class_probs = class_logits.permute(0, 2, 1)
                 class_pred = torch.argmax(class_probs, dim=1).cpu().numpy()
             else:
+                assert False, "unsupported"
                 class_pred = np.zeros(v_pred.shape[1], dtype=np.int32)
 
             # Convert to numpy arrays
