@@ -20,6 +20,8 @@ def load_config():
 
     parser.add_argument('--seg_model_type', default="SegUnet", type=str, help="either: [SwinUNETR, MonaiUnet, SegUnet]")
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
+    parser.add_argument('--model_file_wm', default=None, type=str, help="File for resuming models.")
+    parser.add_argument('--model_file_gm', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--gm_model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--wm_model_file', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--seg_model_file', default=None, type=str, help="File for resuming models.")

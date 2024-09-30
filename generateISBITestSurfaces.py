@@ -90,19 +90,25 @@ def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_na
     nib.freesurfer.write_geometry(save_path_fs + '.surf', verts, faces)
     nib.freesurfer.write_annot(save_path_fs + '.annot', labels, ctab, decode_names(), fill_ctab=False)
 
-def load_model_and_weights(model_file, device, config):
+def load_models_and_weights(device, config_wm,config_gm):
     """
     Load the CSRVCV3 model and its weights.
     """
-    C = config.dim_h
-    K = config.kernel_size
-    Q = config.n_scale
-    use_gcn = config.gnn == 'gcn'
-    model = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                    use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-    model.load_state_dict(torch.load(model_file, map_location=torch.device(device)))
-    model.eval()
-    return model
+    C = config_wm.dim_h
+    K = config_wm.kernel_size
+    Q = config_wm.n_scale
+    use_gcn = config_wm.gnn == 'gcn'
+    model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_wm.sf, gnn_layers=config_wm.gnn_layers,
+                    use_gcn=use_gcn, gat_heads=config_wm.gat_heads, num_classes=config_wm.num_classes).to(device)
+    model_wm.load_state_dict(torch.load(config_wm.model_file_wm, map_location=torch.device(device)))
+    model_wm.eval()
+    
+    model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_gm.sf, gnn_layers=config_gm.gnn_layers,
+                    use_gcn=use_gcn, gat_heads=config_gm.gat_heads, num_classes=config_gm.num_classes).to(device)
+    model_gm.load_state_dict(torch.load(config_gm.model_file_gm, map_location=torch.device(device)))
+    model_gm.eval()
+    
+    return model_wm,model_gm
 
 if __name__ == '__main__':
 
@@ -128,7 +134,8 @@ if __name__ == '__main__':
     rho = config.rho                       # Inflation scale
 
     # ------ Load model-specific parameters from arguments ------
-    model_file_path = os.path.join(config.model_dir,config.model_file) # Full path to the model .pt file
+    model_file_path_wm = os.path.join(config.model_dir,config.model_file_wm) # Full path to the model .pt file
+    model_file_path_gm = os.path.join(config.model_dir,config.model_file_gm) # Full path to the model .pt file
     result_dir = config.result_dir      # Base name for saving outputs
 
     # ------ Load the segmentation network ------
@@ -137,36 +144,43 @@ if __name__ == '__main__':
     segnet.eval()
 
     # ------ Load the CSRVCV3 model ------
-    if not os.path.exists(model_file_path):
-        print(f"Model file {model_file_path} not found. Exiting.")
+    if not os.path.exists(model_file_path_wm):
+        print(f"Model file {model_file_path_wm} not found. Exiting.")
+        exit(1)
+    if not os.path.exists(model_file_path_gm):
+        print(f"Model file {model_file_path_gm} not found. Exiting.")
         exit(1)
 
     # Create a subdirectory for saving results based on result_dir
-    model_subdir = os.path.join(result_dir, result_dir)
+    #TODO: create more subfolders based on model_file without the pt, need to makedir, then 
+    model_subdir = result_dir#os.path.join(result_dir, model_file without the pt)
     os.makedirs(model_subdir, exist_ok=True)
 
-    print(f"Processing model: {model_file_path}")
-    print(f"Saving results to: {model_subdir}")
+    print(f"Processing model: {model_file_path_wm}")
+    print(f"Processing model: {model_file_path_gm}")
+    print(f"Saving results to: {model_subdir}",'update for multi model')
+
+    config_wm = copy.deepcopy(config)
+    config_wm.surf_type = 'wm'
+    config_gm = copy.deepcopy(config)
+    config_gm.surf_type = 'gm'
 
     # Load the CSRVCV3 model
-    CSRVCV3_model = load_model_and_weights(model_file_path, device, config)
+    csrvcv3_wm,csrvcv3_gm = load_models_and_weights(device, config_wm,config_gm)
 
     # ------ Prepare test data ------
-    testset = SegDataset(config=config, data_usage='test')
+    testset = SegDataset(config=config, data_usage='test')#need to update for gm/wm later
     testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
 
+    brain_dataset_wm = BrainDataset(config_wm, data_usage='test', affCtab=True)
+    brain_dataset_gm = BrainDataset(config_gm, data_usage='test', affCtab=True)
+    
+    
     for batch_idx, data in enumerate(testloader):
         volume_in, seg_gt, subid, _aff = data
+        
         subid = str(subid[0])
         volume_in = volume_in.to(device)
-
-        # Initialize BrainDatasets for WM and GM to obtain ctab
-        config_wm = copy.deepcopy(config)
-        config_wm.surf_type = 'wm'
-        config_gm = copy.deepcopy(config)
-        config_gm.surf_type = 'gm'
-        brain_dataset_wm = BrainDataset(config_wm, data_usage='test', affCtab=True)
-        brain_dataset_gm = BrainDataset(config_gm, data_usage='test', affCtab=True)
 
         # Ensure the index corresponds to the current batch
         try:
@@ -196,63 +210,85 @@ if __name__ == '__main__':
             continue
 
         # ------ Save initial surface if required -------
-        if test_type == 'init':
-            init_surface_path = os.path.join(init_dir, f'init_{data_name}_{surf_hemi}_{subid}.obj')
-            mesh_init = trimesh.Trimesh(v_in, f_in)
-            mesh_init.export(init_surface_path)
-            print(f"Saved initial surface for {subid} in {init_surface_path}")
+        # if test_type == 'init':
+        #     init_surface_path = os.path.join(init_dir, f'init_{data_name}_{surf_hemi}_{subid}.obj')
+        #     mesh_init = trimesh.Trimesh(v_in, f_in)
+        #     mesh_init.export(init_surface_path)
+        #     print(f"Saved initial surface for {subid} in {init_surface_path}")
 
+        
+
+        #we need to inflate and smooth for grey matter!
         # ------ Predict the surface using the model -------
-        with torch.no_grad():
-            v_in_tensor = torch.Tensor(v_in).unsqueeze(0).to(device)
-            f_in_tensor = torch.LongTensor(f_in).unsqueeze(0).to(device)
-            CSRVCV3_model.set_data(v_in_tensor, volume_in, f=f_in_tensor)
-            T = torch.Tensor([0, 1]).to(device)
-            v_pred = odeint(CSRVCV3_model, v_in_tensor, T, method=solver, options=dict(step_size=step_size))[-1]
+        if test_type == 'pred' or test_type == 'eval':
+            with torch.no_grad():
+                v_in = torch.Tensor(v_in).unsqueeze(0).to(device)
+                f_in = torch.LongTensor(f_in).unsqueeze(0).to(device)
+                
+                # wm surface
+                csrvcv3_wm.set_data(v_in, volume_in,f_in)
+                v_wm_pred = odeint(csrvcv3_wm, v_in, t=T, method=solver,
+                                   options=dict(step_size=step_size))[-1]
+                
+                csrvcv3_wm.set_data(v_wm_pred, volume_in, f=f_in)
+                _dx = csrvcv3_wm(T, v_wm_pred)  # Forward pass to get classification logits
+                
+                class_logits_wm = csrvcv3_wm.get_class_logits()
+-               # Add LogSoftmax
+-               class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
+-               class_logits_wm = class_logits_wm.unsqueeze(0)
+-               class_probs_wm = class_logits_wm.permute(0, 2, 1)
+-               class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+-               v_gm_in = v_wm_pred.clone()
+                
+                # inflate and smooth
+                for i in range(2):
+                    v_gm_in = laplacian_smooth(v_gm_in, f_in, lambd=1.0)
+                    n_in = compute_normal(v_gm_in, f_in)
+                    v_gm_in += 0.002 * n_in
+                
+                # pial surface
+                csrvcv3_gm.set_data(v_gm_in, volume_in,f_in)
+                v_gm_pred = odeint(csrvcv3_gm, v_gm_in, t=T, method=solver,
+                                   options=dict(step_size=step_size/2))[-1]  # divided by 2 to reduce SIFs
 
-            # Re-set data with the latest prediction for classification
-            CSRVCV3_model.set_data(v_pred, volume_in, f=f_in_tensor)
-            _ = CSRVCV3_model(T, v_pred)  # Forward pass to get classification logits
+                csrvcv3_gm.set_data(v_gm_pred, volume_in, f=f_in)
+                _dx = csrvcv3_gm(T, v_gm_pred)  # Forward pass to get classification logits
 
-            # Get classification logits if applicable
-            if config.num_classes > 1:
-                class_logits = CSRVCV3_model.get_class_logits()
-                # Add LogSoftmax
-                class_logits = F.log_softmax(class_logits, dim=1)
-                class_logits = class_logits.unsqueeze(0)
-                class_probs = class_logits.permute(0, 2, 1)
-                class_pred = torch.argmax(class_probs, dim=1).cpu().numpy()
-            else:
-                assert False, "unsupported"
-                class_pred = np.zeros(v_pred.shape[1], dtype=np.int32)
+                class_logits_gm = csrvcv3_gm.get_class_logits()
+-               # Add LogSoftmax
+-               class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
+-               class_logits_gm = class_logits_gm.unsqueeze(0)
+-               class_probs_gm = class_logits_gm.permute(0, 2, 1)
+-               class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
+-               
+                v_wm_pred = v_wm_pred[0].cpu().numpy()
+                f_wm_pred = f_in[0].cpu().numpy()
+                v_gm_pred = v_gm_pred[0].cpu().numpy()
+                f_gm_pred = f_in[0].cpu().numpy()
+                # map the surface coordinate from [-1,1] to its original space
+                v_wm_pred, f_wm_pred = process_surface_inverse(v_wm_pred, f_wm_pred, data_name)
+                v_gm_pred, f_gm_pred = process_surface_inverse(v_gm_pred, f_gm_pred, data_name)
 
-            # Convert to numpy arrays
-            v_pred_np = v_pred[0].cpu().numpy()
-            f_pred_np = f_in_tensor[0].cpu().numpy()
+                # Re-set data with the latest prediction for classification
+                # Get classification logits if applicable
+                # ------ Save predicted surfaces and annotations -------
+                # Determine surface type for naming and ctab
+                pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_wm_pred'
+                pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gm_pred'
 
-        # ------ Save predicted surfaces and annotations -------
-        # Determine surface type for naming and ctab
-        surf_type = config.surf_type
-        surf_hemi = config.surf_hemi  # 'wm' or 'gm'
-        if surf_type == 'wm':
-            pred_surface_basename = f'{data_name}_{surf_hemi}_{subid}_wm_pred'
-            ctab = ctab_wm
-        elif surf_type == 'gm':
-            pred_surface_basename = f'{data_name}_{surf_hemi}_{subid}_gm_pred'
-            ctab = ctab_gm
-        else:
-            print(f"Unknown surface type {surf_type} for subject {subid}. Skipping.")
-            continue
+                # Define the save path
+                pred_surface_path_wm = os.path.join(model_subdir, pred_surface_basename_wm)
+                pred_surface_path_gm = os.path.join(model_subdir, pred_surface_basename_gm)
 
-        # Define the save path
-        pred_surface_path = os.path.join(model_subdir, pred_surface_basename)
-
-        # Save the predicted surface with annotations
-        try:
-            save_mesh_with_annotations(v_pred_np, f_pred_np, class_pred, ctab, pred_surface_path, data_name)
-            print(f"Saved predicted surface for {subid} in {pred_surface_path}")
-        except Exception as e:
-            print(f"Error saving mesh for subject {subid}: {e}. Skipping.")
-            continue
+                # Save the predicted surface with annotations
+                try:
+                    #TODO: add ground truth saves
+                    save_mesh_with_annotations(v_wm_pred, f_wm_pred, class_wm_pred, ctab_wm, pred_surface_path_wm, data_name)
+                    save_mesh_with_annotations(v_gm_pred, f_gm_pred, class_gm_pred, ctab_gm, pred_surface_path_gm, data_name)
+                    print(f"Saved predicted surface for {subid} in {pred_surface_path}")
+                except Exception as e:
+                    print(f"Error saving mesh for subject {subid}: {e}. Skipping.")
+                    continue
 
     print("Processing completed.")
