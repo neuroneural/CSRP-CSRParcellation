@@ -81,7 +81,11 @@ def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_na
     """
     verts = verts.squeeze()
     faces = faces.squeeze().astype(np.int32)
-    verts, faces = process_surface_inverse(verts, faces, data_name)
+    
+    assert not np.isnan(verts.max()), "The value is NaN"
+    assert not np.isnan(verts.min()), "The value is NaN"
+    
+    # verts, faces = process_surface_inverse(verts, faces, data_name) # comment out because done else where. causing freeview to crash doing it twice i think. 
     labels = labels.squeeze().astype(np.int32)
     if isinstance(ctab, torch.Tensor):
         ctab = ctab.numpy()
@@ -94,6 +98,7 @@ def load_models_and_weights(device, config_wm,config_gm):
     """
     Load the CSRVCV3 model and its weights.
     """
+    print('device',device)
     C = config_wm.dim_h
     K = config_wm.kernel_size
     Q = config_wm.n_scale
@@ -206,6 +211,7 @@ if __name__ == '__main__':
 
         # ------ Predict segmentation -------
         if config.model_file_wm is not None:
+            assert False,'sanity'
             with torch.no_grad():
                 seg_out = segnet(volume_in)
                 seg_pred = torch.argmax(seg_out, dim=1)[0]
@@ -238,7 +244,7 @@ if __name__ == '__main__':
         if test_type == 'pred' or test_type == 'eval':
             with torch.no_grad():
                 if config.model_file_wm is not None:
-                    v_in = torch.Tensor(v_in).unsqueeze(0).to(device)
+                    v_in = torch.Tensor(v_in).float().unsqueeze(0).to(device)
                     f_in = torch.LongTensor(f_in).unsqueeze(0).to(device)
                     
                     # wm surface
@@ -256,20 +262,51 @@ if __name__ == '__main__':
                     class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
                     v_gm_in = v_wm_pred.clone()
                 else:
-                    v_gm_in = v_gt_wm.unsqueeze(0).to(device)
-                    f_in = f_in_wm.unsqueeze(0).to(device)
-                    
+                    v_gm_in = v_gt_wm.clone().unsqueeze(0).to(device)
+                    f_in = f_gt_wm.clone().unsqueeze(0).to(device)
+                
+                print(v_gm_in.max(),'max 1')
+                print(v_gm_in.shape,'v_gm_in.shape')
                 # inflate and smooth
+                # v_gm_in.squeeze()
+                # f_in.squeeze()
                 for i in range(2):
                     v_gm_in = laplacian_smooth(v_gm_in, f_in, lambd=1.0)
+                    print(v_gm_in.max(),'max loop',i , 'a')
+                    print(v_gm_in.shape,'v_gm_in.shape')
                     n_in = compute_normal(v_gm_in, f_in)
+                    
                     v_gm_in += 0.002 * n_in
+                    print(v_gm_in.max(),'max loop',i,'b' )
+                    print(v_gm_in.shape,'v_gm_in.shape')
+                    
 
+                v_gm_in.unsqueeze(0).to(device)
+                f_in.unsqueeze(0).to(device)
+                
+                print(v_gm_in.max(),'max 2')
+                
+                print('v_gm_in',v_gm_in.shape)
+                print('f_in',f_in.shape)
+                assert v_gm_in.ndimension() == 3, f"Expected 3 dimensions, but got {v_gm_in.ndimension()}"
+
+                # Assert the first dimension is 1
+                assert v_gm_in.shape[0] == 1, f"Expected the first dimension to be 1, but got {v_gm_in.shape}"
                 # pial surface
+                print(v_gm_in.max(),'max 3')
+                
                 csrvcv3_gm.set_data(v_gm_in, volume_in,f_in)
                 v_gm_pred = odeint(csrvcv3_gm, v_gm_in, t=T, method=solver,
                                    options=dict(step_size=step_size/2))[-1]  # divided by 2 to reduce SIFs
 
+                print(v_gm_pred.max(),'max pred 1')
+                
+                #v_gm_pred = v_gm_pred.unsqueeze(0)
+                assert v_gm_pred.ndimension() == 3, f"Expected 3 dimensions, but got {v_gm_pred.ndimension()}"
+
+                # Assert the first dimension is 1
+                assert v_gm_in.shape[0] == 1, f"Expected the first dimension to be 1, but got {v_gm_pred.shape}"
+                
                 csrvcv3_gm.set_data(v_gm_pred, volume_in, f=f_in)
                 _dx = csrvcv3_gm(T, v_gm_pred)  # Forward pass to get classification logits
 
@@ -308,9 +345,12 @@ if __name__ == '__main__':
                     #TODO: add ground truth saves
                     if config.model_file_wm is not None:
                         save_mesh_with_annotations(v_wm_pred, f_wm_pred, class_wm_pred, ctab_wm, pred_surface_path_wm, data_name)
-                        print(f"Saved predicted surface for {subid} in {pred_surface_path_wm}")
+                        print(f"Saved predicted white matter surface for {subid} in {pred_surface_path_wm}")
+                    
+                    print('v_gm_pred.shape',v_gm_pred.shape, type(v_gm_pred),v_gm_pred.dtype)
+                    print('f_gm_pred.shape',f_gm_pred.shape, type(f_gm_pred),f_gm_pred.dtype)
                     save_mesh_with_annotations(v_gm_pred, f_gm_pred, class_gm_pred, ctab_gm, pred_surface_path_gm, data_name)
-                    print(f"Saved predicted surface for {subid} in {pred_surface_path_gm}")
+                    print(f"Saved predicted grey matter surface for {subid} in {pred_surface_path_gm}")
                     
                 except Exception as e:
                     print(f"Error saving mesh for subject {subid}: {e}. Skipping.")
