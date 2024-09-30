@@ -98,17 +98,20 @@ def load_models_and_weights(device, config_wm,config_gm):
     K = config_wm.kernel_size
     Q = config_wm.n_scale
     use_gcn = config_wm.gnn == 'gcn'
-    model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_wm.sf, gnn_layers=config_wm.gnn_layers,
-                    use_gcn=use_gcn, gat_heads=config_wm.gat_heads, num_classes=config_wm.num_classes).to(device)
-    model_wm.load_state_dict(torch.load(config_wm.model_file_wm, map_location=torch.device(device)))
-    model_wm.eval()
+    if config.model_file_wm is not None:
+        model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_wm.sf, gnn_layers=config_wm.gnn_layers,
+                        use_gcn=use_gcn, gat_heads=config_wm.gat_heads, num_classes=config_wm.num_classes).to(device)
+        model_wm.load_state_dict(torch.load(config_wm.model_file_wm, map_location=torch.device(device)))
+        model_wm.eval()
     
     model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_gm.sf, gnn_layers=config_gm.gnn_layers,
                     use_gcn=use_gcn, gat_heads=config_gm.gat_heads, num_classes=config_gm.num_classes).to(device)
     model_gm.load_state_dict(torch.load(config_gm.model_file_gm, map_location=torch.device(device)))
     model_gm.eval()
-    
-    return model_wm,model_gm
+    if config.model_file_wm is not None:
+        return model_wm,model_gm
+    else:
+        return model_gm
 
 if __name__ == '__main__':
 
@@ -139,14 +142,18 @@ if __name__ == '__main__':
     result_dir = config.result_dir      # Base name for saving outputs
 
     # ------ Load the segmentation network ------
-    segnet = Unet(c_in=1, c_out=3).to(device)
-    segnet.load_state_dict(torch.load(os.path.join(config.model_dir, config.seg_model_file), map_location=torch.device(device)))
-    segnet.eval()
+    if config.model_file_wm is not None:
+        segnet = Unet(c_in=1, c_out=3).to(device)
+        segnet.load_state_dict(torch.load(os.path.join(config.model_dir, config.seg_model_file), map_location=torch.device(device)))
+        segnet.eval()
 
-    # ------ Load the CSRVCV3 model ------
-    if not os.path.exists(model_file_path_wm):
-        print(f"Model file {model_file_path_wm} not found. Exiting.")
-        exit(1)
+        # ------ Load the CSRVCV3 model ------
+        if not os.path.exists(model_file_path_wm):
+            print(f"Model file {model_file_path_wm} not found. Exiting.")
+            exit(1)
+    
+        print(f"Processing model: {model_file_path_wm}")
+    
     if not os.path.exists(model_file_path_gm):
         print(f"Model file {model_file_path_gm} not found. Exiting.")
         exit(1)
@@ -156,7 +163,6 @@ if __name__ == '__main__':
     model_subdir = result_dir#os.path.join(result_dir, model_file without the pt)
     os.makedirs(model_subdir, exist_ok=True)
 
-    print(f"Processing model: {model_file_path_wm}")
     print(f"Processing model: {model_file_path_gm}")
     print(f"Saving results to: {model_subdir}",'update for multi model')
 
@@ -191,23 +197,24 @@ if __name__ == '__main__':
             continue
 
         # ------ Predict segmentation -------
-        with torch.no_grad():
-            seg_out = segnet(volume_in)
-            seg_pred = torch.argmax(seg_out, dim=1)[0]
-            if surf_hemi == 'lh':
-                seg = (seg_pred == 1).cpu().numpy()  # lh
-            elif surf_hemi == 'rh':
-                seg = (seg_pred == 2).cpu().numpy()  # rh
-            else:
-                print(f"Unknown hemisphere {surf_hemi}. Skipping subject {subid}.")
-                continue
+        if config.model_file_wm is not None:
+            with torch.no_grad():
+                seg_out = segnet(volume_in)
+                seg_pred = torch.argmax(seg_out, dim=1)[0]
+                if surf_hemi == 'lh':
+                    seg = (seg_pred == 1).cpu().numpy()  # lh
+                elif surf_hemi == 'rh':
+                    seg = (seg_pred == 2).cpu().numpy()  # rh
+                else:
+                    print(f"Unknown hemisphere {surf_hemi}. Skipping subject {subid}.")
+                    continue
 
-        # ------ Extract initial surface -------
-        try:
-            v_in, f_in = seg2surf(seg, data_name, sigma=0.5, alpha=16, level=0.8, n_smooth=2, device=device)
-        except ValueError as e:
-            print(f"Error in seg2surf for subject {subid}: {e}. Skipping.")
-            continue
+            # ------ Extract initial surface -------
+            try:
+                v_in, f_in = seg2surf(seg, data_name, sigma=0.5, alpha=16, level=0.8, n_smooth=2, device=device)
+            except ValueError as e:
+                print(f"Error in seg2surf for subject {subid}: {e}. Skipping.")
+                continue
 
         # ------ Save initial surface if required -------
         # if test_type == 'init':
@@ -222,31 +229,34 @@ if __name__ == '__main__':
         # ------ Predict the surface using the model -------
         if test_type == 'pred' or test_type == 'eval':
             with torch.no_grad():
-                v_in = torch.Tensor(v_in).unsqueeze(0).to(device)
-                f_in = torch.LongTensor(f_in).unsqueeze(0).to(device)
-                
-                # wm surface
-                csrvcv3_wm.set_data(v_in, volume_in,f_in)
-                v_wm_pred = odeint(csrvcv3_wm, v_in, t=T, method=solver,
-                                   options=dict(step_size=step_size))[-1]
-                
-                csrvcv3_wm.set_data(v_wm_pred, volume_in, f=f_in)
-                _dx = csrvcv3_wm(T, v_wm_pred)  # Forward pass to get classification logits
-                
-                class_logits_wm = csrvcv3_wm.get_class_logits()
--               # Add LogSoftmax
--               class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
--               class_logits_wm = class_logits_wm.unsqueeze(0)
--               class_probs_wm = class_logits_wm.permute(0, 2, 1)
--               class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
--               v_gm_in = v_wm_pred.clone()
-                
+                if config.model_file_wm is not None:
+                    v_in = torch.Tensor(v_in).unsqueeze(0).to(device)
+                    f_in = torch.LongTensor(f_in).unsqueeze(0).to(device)
+                    
+                    # wm surface
+                    csrvcv3_wm.set_data(v_in, volume_in,f_in)
+                    v_wm_pred = odeint(csrvcv3_wm, v_in, t=T, method=solver,
+                                    options=dict(step_size=step_size))[-1]
+                    
+                    csrvcv3_wm.set_data(v_wm_pred, volume_in, f=f_in)
+                    _dx = csrvcv3_wm(T, v_wm_pred)  # Forward pass to get classification logits
+                    class_logits_wm = csrvcv3_wm.get_class_logits()
+                    # Add LogSoftmax
+                    class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
+                    class_logits_wm = class_logits_wm.unsqueeze(0)
+                    class_probs_wm = class_logits_wm.permute(0, 2, 1)
+                    class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                    v_gm_in = v_wm_pred.clone()
+                else:
+                    vm_gm_in = v_gt_wm
+                    f_in = f_in_wm
+                    
                 # inflate and smooth
                 for i in range(2):
                     v_gm_in = laplacian_smooth(v_gm_in, f_in, lambd=1.0)
                     n_in = compute_normal(v_gm_in, f_in)
                     v_gm_in += 0.002 * n_in
-                
+
                 # pial surface
                 csrvcv3_gm.set_data(v_gm_in, volume_in,f_in)
                 v_gm_pred = odeint(csrvcv3_gm, v_gm_in, t=T, method=solver,
@@ -256,37 +266,44 @@ if __name__ == '__main__':
                 _dx = csrvcv3_gm(T, v_gm_pred)  # Forward pass to get classification logits
 
                 class_logits_gm = csrvcv3_gm.get_class_logits()
--               # Add LogSoftmax
--               class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
--               class_logits_gm = class_logits_gm.unsqueeze(0)
--               class_probs_gm = class_logits_gm.permute(0, 2, 1)
--               class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
--               
-                v_wm_pred = v_wm_pred[0].cpu().numpy()
-                f_wm_pred = f_in[0].cpu().numpy()
+                # Add LogSoftmax
+                class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
+                class_logits_gm = class_logits_gm.unsqueeze(0)
+                class_probs_gm = class_logits_gm.permute(0, 2, 1)
+                class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
+                
+                if config.model_file_wm is not None:
+                    v_wm_pred = v_wm_pred[0].cpu().numpy()
+                    f_wm_pred = f_in[0].cpu().numpy()
                 v_gm_pred = v_gm_pred[0].cpu().numpy()
                 f_gm_pred = f_in[0].cpu().numpy()
                 # map the surface coordinate from [-1,1] to its original space
-                v_wm_pred, f_wm_pred = process_surface_inverse(v_wm_pred, f_wm_pred, data_name)
+                if config.model_file_wm is not None:
+                    v_wm_pred, f_wm_pred = process_surface_inverse(v_wm_pred, f_wm_pred, data_name)
                 v_gm_pred, f_gm_pred = process_surface_inverse(v_gm_pred, f_gm_pred, data_name)
 
                 # Re-set data with the latest prediction for classification
                 # Get classification logits if applicable
                 # ------ Save predicted surfaces and annotations -------
                 # Determine surface type for naming and ctab
-                pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_wm_pred'
+                if config.model_file_wm is not None:
+                    pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_wm_pred'
                 pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gm_pred'
 
                 # Define the save path
-                pred_surface_path_wm = os.path.join(model_subdir, pred_surface_basename_wm)
+                if config.model_file_wm is not None:
+                    pred_surface_path_wm = os.path.join(model_subdir, pred_surface_basename_wm)
                 pred_surface_path_gm = os.path.join(model_subdir, pred_surface_basename_gm)
 
                 # Save the predicted surface with annotations
                 try:
                     #TODO: add ground truth saves
-                    save_mesh_with_annotations(v_wm_pred, f_wm_pred, class_wm_pred, ctab_wm, pred_surface_path_wm, data_name)
+                    if config.model_file_wm is not None:
+                        save_mesh_with_annotations(v_wm_pred, f_wm_pred, class_wm_pred, ctab_wm, pred_surface_path_wm, data_name)
+                        print(f"Saved predicted surface for {subid} in {pred_surface_path_wm}")
                     save_mesh_with_annotations(v_gm_pred, f_gm_pred, class_gm_pred, ctab_gm, pred_surface_path_gm, data_name)
-                    print(f"Saved predicted surface for {subid} in {pred_surface_path}")
+                    print(f"Saved predicted surface for {subid} in {pred_surface_path_gm}")
+                    
                 except Exception as e:
                     print(f"Error saving mesh for subject {subid}: {e}. Skipping.")
                     continue

@@ -57,7 +57,7 @@ python generateISBITestSurfaces.py \
     --classification "$classification_bool" \
     --random_number "$random_number_int" \
     --seg_model_file "model_seg_hcp_Unet_200epochs.pt" \
-    --model_file "$MODEL_FILE_PATH" \
+    --model_file_gm "$MODEL_FILE_PATH" \
     --init_dir "/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init" \
     --result_dir "/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/result/" \
     --model_dir "$MODEL_DIR"
