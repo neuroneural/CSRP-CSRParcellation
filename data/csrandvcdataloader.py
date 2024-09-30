@@ -138,7 +138,7 @@ class BrainDataset(Dataset):
         if not self.affCtab:
             return torch.tensor(brain_arr).float(), torch.tensor(v_in).float(), torch.tensor(v_gt).float(), torch.tensor(f_in).long(), torch.tensor(f_gt).long(), torch.tensor(labels).long()
         else:
-            return torch.tensor(brain_arr).float(), torch.tensor(v_in).float(), torch.tensor(v_gt).float(), torch.tensor(f_in).long(), torch.tensor(f_gt).long(), torch.tensor(labels).long(), torch.tensor(aff).float(), torch.tensor(ctab).long()
+            return torch.tensor(brain_arr).float(), torch.tensor(v_in).float(), torch.tensor(v_gt).float(), torch.tensor(f_in).long(), torch.tensor(f_gt).long(), torch.tensor(labels).long(), torch.tensor(aff).float(), torch.tensor(ctab).long(), subid
 
     def _load_surf_data_for_subject(self, subid, config, data_usage):
         data_dir = os.path.join(config.data_dir, data_usage)

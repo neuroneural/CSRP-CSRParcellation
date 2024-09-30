@@ -98,20 +98,24 @@ def load_models_and_weights(device, config_wm,config_gm):
     K = config_wm.kernel_size
     Q = config_wm.n_scale
     use_gcn = config_wm.gnn == 'gcn'
-    if config.model_file_wm is not None:
+    if config_wm.model_file_wm is not None:
+        model_file_path_wm = os.path.join(config_wm.model_dir,config.model_file_wm) # Full path to the model .pt file
+    model_file_path_gm = os.path.join(config_gm.model_dir,config.model_file_gm) # Full path to the model .pt file
+    
+    if config_wm.model_file_wm is not None:
         model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_wm.sf, gnn_layers=config_wm.gnn_layers,
                         use_gcn=use_gcn, gat_heads=config_wm.gat_heads, num_classes=config_wm.num_classes).to(device)
-        model_wm.load_state_dict(torch.load(config_wm.model_file_wm, map_location=torch.device(device)))
+        model_wm.load_state_dict(torch.load(model_file_path_wm, map_location=torch.device(device)))
         model_wm.eval()
     
     model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_gm.sf, gnn_layers=config_gm.gnn_layers,
                     use_gcn=use_gcn, gat_heads=config_gm.gat_heads, num_classes=config_gm.num_classes).to(device)
-    model_gm.load_state_dict(torch.load(config_gm.model_file_gm, map_location=torch.device(device)))
+    model_gm.load_state_dict(torch.load(model_file_path_gm, map_location=torch.device(device)))
     model_gm.eval()
-    if config.model_file_wm is not None:
+    if config_wm.model_file_wm is not None:
         return model_wm,model_gm
     else:
-        return model_gm
+        return None,model_gm
 
 if __name__ == '__main__':
 
@@ -137,10 +141,11 @@ if __name__ == '__main__':
     rho = config.rho                       # Inflation scale
 
     # ------ Load model-specific parameters from arguments ------
-    model_file_path_wm = os.path.join(config.model_dir,config.model_file_wm) # Full path to the model .pt file
+    if config.model_file_wm is not None:
+        model_file_path_wm = os.path.join(config.model_dir,config.model_file_wm) # Full path to the model .pt file
     model_file_path_gm = os.path.join(config.model_dir,config.model_file_gm) # Full path to the model .pt file
     result_dir = config.result_dir      # Base name for saving outputs
-
+    
     # ------ Load the segmentation network ------
     if config.model_file_wm is not None:
         segnet = Unet(c_in=1, c_out=3).to(device)
@@ -181,7 +186,7 @@ if __name__ == '__main__':
     brain_dataset_wm = BrainDataset(config_wm, data_usage='test', affCtab=True)
     brain_dataset_gm = BrainDataset(config_gm, data_usage='test', affCtab=True)
     
-    
+    T = torch.Tensor([0,1]).to(device)
     for batch_idx, data in enumerate(testloader):
         volume_in, seg_gt, subid, _aff = data
         
@@ -190,8 +195,11 @@ if __name__ == '__main__':
 
         # Ensure the index corresponds to the current batch
         try:
-            brain_arr_wm, v_in_wm, v_gt_wm, f_in_wm, f_gt_wm, labels_wm, aff_wm, ctab_wm = brain_dataset_wm[batch_idx]
-            brain_arr_gm, v_in_gm, v_gt_gm, f_in_gm, f_gt_gm, labels_gm, aff_gm, ctab_gm = brain_dataset_gm[batch_idx]
+            brain_arr_wm, v_in_wm, v_gt_wm, f_in_wm, f_gt_wm, labels_wm, aff_wm, ctab_wm, sub_id_wm = brain_dataset_wm[batch_idx]
+            brain_arr_gm, v_in_gm, v_gt_gm, f_in_gm, f_gt_gm, labels_gm, aff_gm, ctab_gm, sub_id_gm = brain_dataset_gm[batch_idx]
+            assert subid == sub_id_wm
+            assert subid == sub_id_gm
+            
         except IndexError:
             print(f"BrainDataset index {batch_idx} out of range. Skipping subject {subid}.")
             continue
@@ -248,8 +256,8 @@ if __name__ == '__main__':
                     class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
                     v_gm_in = v_wm_pred.clone()
                 else:
-                    vm_gm_in = v_gt_wm
-                    f_in = f_in_wm
+                    v_gm_in = v_gt_wm.unsqueeze(0).to(device)
+                    f_in = f_in_wm.unsqueeze(0).to(device)
                     
                 # inflate and smooth
                 for i in range(2):
