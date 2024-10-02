@@ -67,7 +67,7 @@ echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, 
 #--data_dir '/speedrun/wacv-data-dev/' \
     
 # Execute Python script with parameters
-python trainCSRandParcellation.py \
+python trainCSRandParcellationResume.py \
     --model_type 'csrvc' \
     --patience 'standard' \
     --version $version \
@@ -80,9 +80,11 @@ python trainCSRandParcellation.py \
     --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
+    --model_file 'model_gm_hcp_rh_vc_v3_csrvc_layers12_sf0.1_heads1_200epochs_euler_norecon_class_501338.pt' \
+    --start_epoch 201 \
     --data_name 'hcp' \
     --surf_hemi 'rh' \
-    --surf_type 'wm' \
+    --surf_type 'gm' \
     --n_epochs 401 \
     --start_epoch 1 \
     --tag 'vc' \

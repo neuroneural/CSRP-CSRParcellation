@@ -67,7 +67,7 @@ echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, 
 #--data_dir '/speedrun/wacv-data-dev/' \
     
 # Execute Python script with parameters
-python trainCSRandParcellation.py \
+python trainCSRandParcellationResume.py \
     --model_type 'csrvc' \
     --patience 'standard' \
     --version $version \
@@ -80,9 +80,11 @@ python trainCSRandParcellation.py \
     --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
+    --model_file 'TBD' \
+    --start_epoch -1 \
     --data_name 'hcp' \
-    --surf_hemi 'rh' \
-    --surf_type 'wm' \
+    --surf_hemi 'lh' \
+    --surf_type 'gm' \
     --n_epochs 401 \
     --start_epoch 1 \
     --tag 'vc' \
