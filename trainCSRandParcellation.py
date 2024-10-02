@@ -65,6 +65,7 @@ def train_surf(config):
     tag = config.tag
     print('surf_type',surf_type)
     print('surf_hemi',surf_hemi)
+    print('atlas',config.atlas)
     n_epochs = config.n_epochs
     start_epoch = config.start_epoch
     lr = config.lr
@@ -296,7 +297,7 @@ def train_surf(config):
                         class_logits = F.log_softmax(class_logits, dim=1)
                         class_logits = class_logits.unsqueeze(0)
                         class_logits = class_logits.permute(0, 2, 1)
-
+                        
                         # Ensure labels are within valid range
                         if torch.any(labels < 0) or torch.any(labels >= num_classes):
                             print(f"Invalid label detected in validation batch {idx} of epoch {epoch}")
