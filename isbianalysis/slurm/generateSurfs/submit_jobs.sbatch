@@ -81,7 +81,7 @@ MODEL_FILE=$(echo "$MODEL_FILE" | xargs)
 MODEL_DIR=$(echo "$MODEL_DIR" | xargs)
 
 # Path to your shell script that activates the Conda environment and runs the Python script
-INNER_SHELL_SCRIPT="/cortexode/isbianalysis/slurm/generateSurfs/run_generate_surface.sh"
+INNER_SHELL_SCRIPT="/cortexode/isbianalysis/slurm/generateSurfs/run_generate_surfacev2.sh"
 
 # Execute the shell script inside the Singularity container
 singularity exec --nv \

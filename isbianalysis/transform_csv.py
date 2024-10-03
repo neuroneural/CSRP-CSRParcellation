@@ -1,15 +1,16 @@
 import pandas as pd
 import csv
 import re
+import os
 
 # Read the CSV with two header rows
 df = pd.read_csv('validation_metrics.csv', header=[0, 1])
 
-# Optionally, print the columns to inspect their structure
-print(df.columns)
-
 # Initialize a list to hold rows for the new CSV
 rows = []
+
+# Define MODEL_DIR (adjust the path as needed)
+MODEL_DIR = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/'
 
 # Iterate over each row in the DataFrame
 for index, row in df.iterrows():
@@ -24,7 +25,6 @@ for index, row in df.iterrows():
         best_model_filename = row.get(('best_model_filename', mode), '')
         if pd.notna(best_model_filename) and 'Log file does not exist' not in str(best_model_filename):
             # Extract additional parameters
-            max_epochs = row.get(('max_epochs', mode), '')
             if mode in ['_norecon_class', '_recon_class']:
                 epoch = row.get(('max_validation_dice_epoch', mode), '')
             else:
@@ -56,14 +56,24 @@ for index, row in df.iterrows():
             heads_match = re.search(r'_heads(\d+)_', model_filename)
             heads = heads_match.group(1) if heads_match else '1'
 
-            version_match = re.search(r'_vc_(v\d+)_', model_filename)
+            version_match = re.search(r'_vc_([^_]+)_', model_filename)
             version = version_match.group(1) if version_match else 'v3'
 
-            model_type_match = re.search(r'_(csrvc|other_model_types)_', model_filename)
+            # Updated model_type extraction
+            model_type_match = re.search(r'_vc_[^_]+_([^_]+)', model_filename)
             model_type = model_type_match.group(1) if model_type_match else 'csrvc'
 
-            data_name_match = re.search(r'model_.*?_(\w+)_', model_filename)
+            # Updated data_name extraction
+            data_name_match = re.search(r'^model_[^_]+_([^_]+)_', model_filename)
             data_name = data_name_match.group(1) if data_name_match else 'hcp'
+
+            # Full path to the model file
+            model_file_path = os.path.join(MODEL_DIR, best_model_filename)
+
+            # Check if the model file exists
+            if not os.path.isfile(model_file_path):
+                print(f"Model file '{model_file_path}' does not exist. Skipping this entry.")
+                continue  # Skip adding this entry to the CSV
 
             # Create a row for the new CSV
             new_row = {
@@ -80,7 +90,7 @@ for index, row in df.iterrows():
                 'classification': classification,
                 'random_number': random_number,
                 'MODEL_FILE': best_model_filename,
-                'MODEL_DIR': '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/'
+                'MODEL_DIR': MODEL_DIR
             }
             rows.append(new_row)
 
