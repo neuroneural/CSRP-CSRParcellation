@@ -39,10 +39,11 @@ source /opt/miniconda3/bin/activate csrf
 
 # Navigate to the appropriate directory if necessary
 cd /cortexode/
-
+#isbi-data-dev
+#cortexode-data-rp
 # Run the Python script with the provided arguments
 python generateISBITestSurfaces.py \
-    --data_dir "/speedrun/cortexode-data-rp/" \
+    --data_dir "/speedrun/isbi-data-dev/" \
     --surf_type "$surf_type" \
     --data_name "$data_name" \
     --surf_hemi "$hemisphere" \

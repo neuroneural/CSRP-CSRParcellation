@@ -4,7 +4,7 @@
 #SBATCH --mem=20g
 #SBATCH -p qTRDGPU
 #SBATCH --gres=gpu:RTX:1
-#SBATCH -t 5-00:00
+#SBATCH -t 1-00:00
 #SBATCH -J gensurfis
 #SBATCH -e jobs/error%A_%a.err
 #SBATCH -o jobs/out%A_%a.out

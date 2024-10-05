@@ -85,7 +85,7 @@ def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_na
     assert not np.isnan(verts.max()), "The value is NaN"
     assert not np.isnan(verts.min()), "The value is NaN"
     
-    # verts, faces = process_surface_inverse(verts, faces, data_name) # comment out because done else where. causing freeview to crash doing it twice i think. 
+    # verts, faces = process_surface_inverse(verts, faces, data_name) # comment out because done elsewhere
     labels = labels.squeeze().astype(np.int32)
     if isinstance(ctab, torch.Tensor):
         ctab = ctab.numpy()
@@ -94,33 +94,96 @@ def save_mesh_with_annotations(verts, faces, labels, ctab, save_path_fs, data_na
     nib.freesurfer.write_geometry(save_path_fs + '.surf', verts, faces)
     nib.freesurfer.write_annot(save_path_fs + '.annot', labels, ctab, decode_names(), fill_ctab=False)
 
-def load_models_and_weights(device, config_wm,config_gm):
+def extract_rand_num_and_epoch_from_filename(filename):
     """
-    Load the CSRVCV3 model and its weights.
+    Extract the random number and epoch from the model filename.
     """
-    print('device',device)
+    # Extract random number and epoch
+    # Assuming the filename format includes '_{epoch}epochs_..._{rand_num}.pt'
+    match = re.search(r'_(\d+)epochs_.*?_(\d+)(?:\.pt|_final\.pt)$', filename)
+    if match:
+        epoch = int(match.group(1)) + 1  # Add 1 to get start epoch (epoch + 1)
+        rand_num = int(match.group(2))
+        return rand_num, epoch
+    else:
+        # Handle case where filename ends with '_final.pt' without epoch number
+        match = re.search(r'_(\d+)(?:\.pt|_final\.pt)$', filename)
+        if match:
+            rand_num = int(match.group(1))
+            epoch = None  # Epoch not found
+            return rand_num, epoch
+        else:
+            return None, None
+
+def load_models_and_weights(device, config_wm, config_gm):
+    """
+    Load the CSRVCV3 models and their weights, extract rand_num and start_epoch.
+    """
+    print('device', device)
     C = config_wm.dim_h
     K = config_wm.kernel_size
     Q = config_wm.n_scale
     use_gcn = config_wm.gnn == 'gcn'
+
+    # Corrected model file paths
     if config_wm.model_file_wm is not None:
-        model_file_path_wm = os.path.join(config_wm.model_dir,config.model_file_wm) # Full path to the model .pt file
-    model_file_path_gm = os.path.join(config_gm.model_dir,config.model_file_gm) # Full path to the model .pt file
-    
-    if config_wm.model_file_wm is not None:
-        model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_wm.sf, gnn_layers=config_wm.gnn_layers,
-                        use_gcn=use_gcn, gat_heads=config_wm.gat_heads, num_classes=config_wm.num_classes).to(device)
-        model_wm.load_state_dict(torch.load(model_file_path_wm, map_location=torch.device(device)))
-        model_wm.eval()
-    
-    model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_gm.sf, gnn_layers=config_gm.gnn_layers,
-                    use_gcn=use_gcn, gat_heads=config_gm.gat_heads, num_classes=config_gm.num_classes).to(device)
-    model_gm.load_state_dict(torch.load(model_file_path_gm, map_location=torch.device(device)))
-    model_gm.eval()
-    if config_wm.model_file_wm is not None:
-        return model_wm,model_gm
+        model_file_path_wm = os.path.join(config_wm.model_dir, config_wm.model_file_wm)
     else:
-        return None,model_gm
+        model_file_path_wm = None
+    model_file_path_gm = os.path.join(config_gm.model_dir, config_gm.model_file_gm)
+
+    # Initialize variables
+    rand_num_wm = None
+    start_epoch_wm = None
+    rand_num_gm = None
+    start_epoch_gm = None
+
+    # Load WM model if applicable
+    if config_wm.model_file_wm is not None:
+        if not os.path.exists(model_file_path_wm):
+            print(f"WM Model file {model_file_path_wm} not found. Exiting.")
+            exit(1)
+        rand_num_wm, start_epoch_wm = extract_rand_num_and_epoch_from_filename(config_wm.model_file_wm)
+        print(f"WM Model Random Number: {rand_num_wm}")
+        if start_epoch_wm is not None:
+            print(f"WM Model Start Epoch (epoch + 1): {start_epoch_wm}")
+        else:
+            print("WM Model Start Epoch not found in filename.")
+
+        model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_wm.sf, gnn_layers=config_wm.gnn_layers,
+                           use_gcn=use_gcn, gat_heads=config_wm.gat_heads, num_classes=config_wm.num_classes).to(device)
+        # Load the checkpoint
+        checkpoint_wm = torch.load(model_file_path_wm, map_location=device)
+        if 'model_state_dict' in checkpoint_wm:
+            model_wm.load_state_dict(checkpoint_wm['model_state_dict'])
+        else:
+            model_wm.load_state_dict(checkpoint_wm)
+        model_wm.eval()
+    else:
+        model_wm = None
+
+    # Load GM model
+    if not os.path.exists(model_file_path_gm):
+        print(f"GM Model file {model_file_path_gm} not found. Exiting.")
+        exit(1)
+    rand_num_gm, start_epoch_gm = extract_rand_num_and_epoch_from_filename(config_gm.model_file_gm)
+    print(f"GM Model Random Number: {rand_num_gm}")
+    if start_epoch_gm is not None:
+        print(f"GM Model Start Epoch (epoch + 1): {start_epoch_gm}")
+    else:
+        print("GM Model Start Epoch not found in filename.")
+
+    model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_gm.sf, gnn_layers=config_gm.gnn_layers,
+                       use_gcn=use_gcn, gat_heads=config_gm.gat_heads, num_classes=config_gm.num_classes).to(device)
+    # Load the checkpoint
+    checkpoint_gm = torch.load(model_file_path_gm, map_location=device)
+    if 'model_state_dict' in checkpoint_gm:
+        model_gm.load_state_dict(checkpoint_gm['model_state_dict'])
+    else:
+        model_gm.load_state_dict(checkpoint_gm)
+    model_gm.eval()
+
+    return model_wm, model_gm
 
 if __name__ == '__main__':
 
@@ -131,8 +194,8 @@ if __name__ == '__main__':
     model_dir = config.model_dir           # Directory of pretrained models
     init_dir = config.init_dir             # Directory for saving initial surfaces
     result_dir = config.result_dir         # Directory for saving predicted surfaces
-    data_name = config.data_name             # e.g., 'hcp', 'adni', 'dhcp'
-    surf_hemi = config.surf_hemi            # 'lh', 'rh'
+    data_name = config.data_name           # e.g., 'hcp', 'adni', 'dhcp'
+    surf_hemi = config.surf_hemi           # 'lh', 'rh'
     device = config.device                 # e.g., 'cuda' or 'cpu'
     tag = config.tag                       # Identity of the experiment
 
@@ -141,51 +204,59 @@ if __name__ == '__main__':
     Q = config.n_scale                     # Multi-scale input
 
     step_size = config.step_size           # Step size of integration
-    solver = config.solver                   # ODE solver (e.g., 'euler', 'rk4')
+    solver = config.solver                 # ODE solver (e.g., 'euler', 'rk4')
     n_inflate = config.n_inflate           # Inflation iterations
     rho = config.rho                       # Inflation scale
 
     # ------ Load model-specific parameters from arguments ------
     if config.model_file_wm is not None:
-        model_file_path_wm = os.path.join(config.model_dir,config.model_file_wm) # Full path to the model .pt file
-    model_file_path_gm = os.path.join(config.model_dir,config.model_file_gm) # Full path to the model .pt file
+        model_file_path_wm = os.path.join(config.model_dir, config.model_file_wm)
+    else:
+        model_file_path_wm = None
+    model_file_path_gm = os.path.join(config.model_dir, config.model_file_gm)
     result_dir = config.result_dir      # Base name for saving outputs
-    
+
     # ------ Load the segmentation network ------
     if config.model_file_wm is not None:
         segnet = Unet(c_in=1, c_out=3).to(device)
-        segnet.load_state_dict(torch.load(os.path.join(config.model_dir, config.seg_model_file), map_location=torch.device(device)))
+        segnet.load_state_dict(torch.load(os.path.join(config.model_dir, config.seg_model_file), map_location=device))
         segnet.eval()
 
-        # ------ Load the CSRVCV3 model ------
+        # ------ Load the CSRVCV3 model for WM ------
         if not os.path.exists(model_file_path_wm):
             print(f"Model file {model_file_path_wm} not found. Exiting.")
             exit(1)
-    
-        print(f"Processing model: {model_file_path_wm}")
-    
+
+        print(f"Processing WM model: {model_file_path_wm}")
+
     if not os.path.exists(model_file_path_gm):
         print(f"Model file {model_file_path_gm} not found. Exiting.")
         exit(1)
 
-    # Create a subdirectory for saving results based on result_dir
-    #TODO: create more subfolders based on model_file without the pt, need to makedir, then 
-    model_subdir = result_dir#os.path.join(result_dir, model_file without the pt)
-    os.makedirs(model_subdir, exist_ok=True)
-
-    print(f"Processing model: {model_file_path_gm}")
-    print(f"Saving results to: {model_subdir}",'update for multi model')
+    print(f"Processing GM model: {model_file_path_gm}")
 
     config_wm = copy.deepcopy(config)
     config_wm.surf_type = 'wm'
     config_gm = copy.deepcopy(config)
     config_gm.surf_type = 'gm'
 
-    # Load the CSRVCV3 model
-    csrvcv3_wm,csrvcv3_gm = load_models_and_weights(device, config_wm,config_gm)
+    # Load the CSRVCV3 models and extract rand_num and start_epoch
+    csrvcv3_wm, csrvcv3_gm = load_models_and_weights(device, config_wm, config_gm)
+
+    # Create subdirectories for saving results based on model files
+    if config.model_file_wm is not None:
+        wm_model_dir_name = os.path.splitext(os.path.basename(config.model_file_wm))[0]
+        model_subdir_wm = os.path.join(result_dir, wm_model_dir_name)
+        os.makedirs(model_subdir_wm, exist_ok=True)
+        print(f"Saving WM results to: {model_subdir_wm}")
+
+    gm_model_dir_name = os.path.splitext(os.path.basename(config.model_file_gm))[0]
+    model_subdir_gm = os.path.join(result_dir, gm_model_dir_name)
+    os.makedirs(model_subdir_gm, exist_ok=True)
+    print(f"Saving GM results to: {model_subdir_gm}")
 
     # ------ Prepare test data ------
-    testset = SegDataset(config=config, data_usage='test')#need to update for gm/wm later
+    testset = SegDataset(config=config, data_usage='test')  # Need to update for gm/wm later
     testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
 
     brain_dataset_wm = BrainDataset(config_wm, data_usage='test', affCtab=True)
@@ -211,7 +282,6 @@ if __name__ == '__main__':
 
         # ------ Predict segmentation -------
         if config.model_file_wm is not None:
-            assert False,'sanity'
             with torch.no_grad():
                 seg_out = segnet(volume_in)
                 seg_pred = torch.argmax(seg_out, dim=1)[0]
@@ -230,16 +300,6 @@ if __name__ == '__main__':
                 print(f"Error in seg2surf for subject {subid}: {e}. Skipping.")
                 continue
 
-        # ------ Save initial surface if required -------
-        # if test_type == 'init':
-        #     init_surface_path = os.path.join(init_dir, f'init_{data_name}_{surf_hemi}_{subid}.obj')
-        #     mesh_init = trimesh.Trimesh(v_in, f_in)
-        #     mesh_init.export(init_surface_path)
-        #     print(f"Saved initial surface for {subid} in {init_surface_path}")
-
-        
-
-        #we need to inflate and smooth for grey matter!
         # ------ Predict the surface using the model -------
         if test_type == 'pred' or test_type == 'eval':
             with torch.no_grad():
@@ -248,9 +308,9 @@ if __name__ == '__main__':
                     f_in = torch.LongTensor(f_in).unsqueeze(0).to(device)
                     
                     # wm surface
-                    csrvcv3_wm.set_data(v_in, volume_in,f_in)
+                    csrvcv3_wm.set_data(v_in, volume_in, f_in)
                     v_wm_pred = odeint(csrvcv3_wm, v_in, t=T, method=solver,
-                                    options=dict(step_size=step_size))[-1]
+                                       options=dict(step_size=step_size))[-1]
                     
                     csrvcv3_wm.set_data(v_wm_pred, volume_in, f=f_in)
                     _dx = csrvcv3_wm(T, v_wm_pred)  # Forward pass to get classification logits
@@ -262,51 +322,24 @@ if __name__ == '__main__':
                     class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
                     v_gm_in = v_wm_pred.clone()
                 else:
+                    assert False, "We require both models to run, this was for debugging"
                     v_gm_in = v_gt_wm.clone().unsqueeze(0).to(device)
                     f_in = f_gt_wm.clone().unsqueeze(0).to(device)
                 
-                print(v_gm_in.max(),'max 1')
-                print(v_gm_in.shape,'v_gm_in.shape')
-                # inflate and smooth
-                # v_gm_in.squeeze()
-                # f_in.squeeze()
+                # Inflate and smooth for grey matter
                 for i in range(2):
                     v_gm_in = laplacian_smooth(v_gm_in, f_in, lambd=1.0)
-                    print(v_gm_in.max(),'max loop',i , 'a')
-                    print(v_gm_in.shape,'v_gm_in.shape')
                     n_in = compute_normal(v_gm_in, f_in)
-                    
                     v_gm_in += 0.002 * n_in
-                    print(v_gm_in.max(),'max loop',i,'b' )
-                    print(v_gm_in.shape,'v_gm_in.shape')
-                    
 
-                v_gm_in.unsqueeze(0).to(device)
-                f_in.unsqueeze(0).to(device)
+                v_gm_in = v_gm_in.to(device)
+                f_in = f_in.to(device)
                 
-                print(v_gm_in.max(),'max 2')
-                
-                print('v_gm_in',v_gm_in.shape)
-                print('f_in',f_in.shape)
-                assert v_gm_in.ndimension() == 3, f"Expected 3 dimensions, but got {v_gm_in.ndimension()}"
-
-                # Assert the first dimension is 1
-                assert v_gm_in.shape[0] == 1, f"Expected the first dimension to be 1, but got {v_gm_in.shape}"
                 # pial surface
-                print(v_gm_in.max(),'max 3')
-                
-                csrvcv3_gm.set_data(v_gm_in, volume_in,f_in)
+                csrvcv3_gm.set_data(v_gm_in, volume_in, f_in)
                 v_gm_pred = odeint(csrvcv3_gm, v_gm_in, t=T, method=solver,
-                                   options=dict(step_size=step_size/2))[-1]  # divided by 2 to reduce SIFs
+                                   options=dict(step_size=step_size/2))[-1]  # Divided by 2 to reduce SIFs
 
-                print(v_gm_pred.max(),'max pred 1')
-                
-                #v_gm_pred = v_gm_pred.unsqueeze(0)
-                assert v_gm_pred.ndimension() == 3, f"Expected 3 dimensions, but got {v_gm_pred.ndimension()}"
-
-                # Assert the first dimension is 1
-                assert v_gm_in.shape[0] == 1, f"Expected the first dimension to be 1, but got {v_gm_pred.shape}"
-                
                 csrvcv3_gm.set_data(v_gm_pred, volume_in, f=f_in)
                 _dx = csrvcv3_gm(T, v_gm_pred)  # Forward pass to get classification logits
 
@@ -322,13 +355,11 @@ if __name__ == '__main__':
                     f_wm_pred = f_in[0].cpu().numpy()
                 v_gm_pred = v_gm_pred[0].cpu().numpy()
                 f_gm_pred = f_in[0].cpu().numpy()
-                # map the surface coordinate from [-1,1] to its original space
+                # Map the surface coordinate from [-1,1] to its original space
                 if config.model_file_wm is not None:
                     v_wm_pred, f_wm_pred = process_surface_inverse(v_wm_pred, f_wm_pred, data_name)
                 v_gm_pred, f_gm_pred = process_surface_inverse(v_gm_pred, f_gm_pred, data_name)
 
-                # Re-set data with the latest prediction for classification
-                # Get classification logits if applicable
                 # ------ Save predicted surfaces and annotations -------
                 # Determine surface type for naming and ctab
                 if config.model_file_wm is not None:
@@ -337,18 +368,15 @@ if __name__ == '__main__':
 
                 # Define the save path
                 if config.model_file_wm is not None:
-                    pred_surface_path_wm = os.path.join(model_subdir, pred_surface_basename_wm)
-                pred_surface_path_gm = os.path.join(model_subdir, pred_surface_basename_gm)
+                    pred_surface_path_wm = os.path.join(model_subdir_wm, pred_surface_basename_wm)
+                pred_surface_path_gm = os.path.join(model_subdir_gm, pred_surface_basename_gm)
 
                 # Save the predicted surface with annotations
                 try:
-                    #TODO: add ground truth saves
                     if config.model_file_wm is not None:
                         save_mesh_with_annotations(v_wm_pred, f_wm_pred, class_wm_pred, ctab_wm, pred_surface_path_wm, data_name)
                         print(f"Saved predicted white matter surface for {subid} in {pred_surface_path_wm}")
                     
-                    print('v_gm_pred.shape',v_gm_pred.shape, type(v_gm_pred),v_gm_pred.dtype)
-                    print('f_gm_pred.shape',f_gm_pred.shape, type(f_gm_pred),f_gm_pred.dtype)
                     save_mesh_with_annotations(v_gm_pred, f_gm_pred, class_gm_pred, ctab_gm, pred_surface_path_gm, data_name)
                     print(f"Saved predicted grey matter surface for {subid} in {pred_surface_path_gm}")
                     

@@ -58,13 +58,37 @@ def extract_rand_num_from_filename(filename):
     else:
         return None
 
+# Custom logging handler that flushes after every emit
+class FlushFileHandler(logging.FileHandler):
+    """
+    Custom FileHandler that flushes the buffer after every emit.
+    """
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
+def setup_logger(log_filename):
+    """
+    Sets up a logger that writes to the specified log file with immediate flushing.
+    """
+    logger = logging.getLogger('train_surf_logger')
+    logger.setLevel(logging.INFO)
+    
+    # Prevent adding multiple handlers if the logger is already set up
+    if not logger.handlers:
+        # Create custom handler that flushes after each message
+        handler = FlushFileHandler(log_filename, mode='a')
+        formatter = logging.Formatter('%(asctime)s %(message)s')
+        handler.setFormatter(formatter)
+        
+        logger.addHandler(handler)
+    
+    return logger
+
 def train_surf(config):
     """
     Training CSRVCV2 for cortical surface reconstruction and classification.
     """
-    # Initialize rand_num to None
-    rand_num = None
-
     # --------------------------
     # Load configuration
     # --------------------------
@@ -109,10 +133,53 @@ def train_surf(config):
         use_gcn = False  # default to False if not specified
 
     # --------------------------
+    # Initialize rand_num and log filename
+    # --------------------------
+    # Initialize rand_num to None
+    rand_num = None
+
+    # Load model_file to potentially extract rand_num
+    if config.model_file:
+        rand_num = extract_rand_num_from_filename(config.model_file)
+        if rand_num is None:
+            rand_num = random.randint(100000, 999999)
+            print(f"Could not extract rand_num from filename. Generated new rand_num: {rand_num}")
+        else:
+            print(f"Extracted rand_num {rand_num} from model filename.")
+    else:
+        rand_num = random.randint(100000, 999999)
+
+    # Create log file
+    log_filename = os.path.join(
+        model_dir,
+        f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
+        f"{config.gnn_layers}_sf{config.sf}_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}"
+    )
+
+    if config.gnn == 'gat':
+        log_filename += f"_heads{config.gat_heads}"
+    elif config.gnn == 'gcn':
+        pass  # No change needed for gcn
+
+    log_filename += ".log"
+    print('log_filename', log_filename)
+
+    # Ensure model directory exists
+    os.makedirs(model_dir, exist_ok=True)
+
+    # --------------------------
+    # Set up logger
+    # --------------------------
+    logger = setup_logger(log_filename)
+
+    # Now, we can use logger.info instead of logging.info
+    logger.info("Initialize model ...")
+
+    T = torch.Tensor([0, 1]).to(device)    # Integration time interval for ODE
+
+    # --------------------------
     # Initialize model
     # --------------------------
-    logging.info("Initialize model ...")
-
     # Initialize the model
     if config.model_type == 'csrvc' and config.version == '2':
         assert False, 'sanity check'
@@ -153,55 +220,20 @@ def train_surf(config):
     if config.model_file:
         model_path = os.path.join(config.model_dir, config.model_file)
         if os.path.isfile(model_path):
-            # Extract rand_num from filename
-            rand_num = extract_rand_num_from_filename(config.model_file)
-            if rand_num is None:
-                rand_num = random.randint(100000, 999999)
-                print(f"Could not extract rand_num from filename. Generated new rand_num: {rand_num}")
-            else:
-                print(f"Extracted rand_num {rand_num} from model filename.")
-
-            # Load checkpoint
-            checkpoint = torch.load(model_path, map_location=device)
-            cortexode.load_state_dict(checkpoint['model_state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            # Set start_epoch to the epoch from the checkpoint plus one
-            start_epoch = checkpoint['epoch'] + 1
-            print(f"Model loaded from {model_path}, starting from epoch {start_epoch}")
+            # Load model state dict directly
+            cortexode.load_state_dict(torch.load(model_path, map_location=device))
+            logger.info(f"Model state loaded from {model_path}. Starting from epoch {config.start_epoch}")
+            start_epoch = config.start_epoch  # Since we're not loading epoch from checkpoint
         else:
-            print("No model file provided or file does not exist. Starting from scratch.")
-            rand_num = random.randint(100000, 999999)
+            logger.info("No model file provided or file does not exist. Starting from scratch.")
             start_epoch = config.start_epoch
     else:
-        rand_num = random.randint(100000, 999999)
         start_epoch = config.start_epoch  # If not resuming, start from config.start_epoch
-
-    # Now that rand_num is set, we can proceed to create log_filename and other filenames
-
-    # Create log file
-    log_filename = os.path.join(
-        model_dir,
-        f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
-        f"{config.gnn_layers}_sf{config.sf}_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}"
-    )
-
-    print('log_filename', log_filename)
-    if config.gnn == 'gat':
-        log_filename += f"_heads{config.gat_heads}"
-    elif config.gnn == 'gcn':
-        pass  # No change needed for gcn
-
-    log_filename += ".log"
-
-    # Configure logging
-    logging.basicConfig(filename=log_filename, filemode='a', level=logging.INFO, format='%(asctime)s %(message)s')
-
-    T = torch.Tensor([0, 1]).to(device)    # Integration time interval for ODE
 
     # --------------------------
     # Load dataset
     # --------------------------
-    logging.info("Load dataset ...")
+    logger.info("Load dataset ...")
     trainset = BrainDataset(config, 'train')  # Should include labels
     validset = BrainDataset(config, 'valid')
 
@@ -211,8 +243,7 @@ def train_surf(config):
     # --------------------------
     # Training
     # --------------------------
-
-    logging.info("Start training ...")
+    logger.info("Start training ...")
     for epoch in tqdm(range(start_epoch, n_epochs + 1)):
         avg_recon_loss = []
         avg_classification_loss = []
@@ -274,11 +305,11 @@ def train_surf(config):
                 optimizer.step()
                 avg_classification_loss.append(classification_loss.item())
 
-        logging.info('epoch:{}, recon loss:{}'.format(epoch, np.mean(avg_recon_loss)))
-        logging.info('epoch:{}, classification loss:{}'.format(epoch, np.mean(avg_classification_loss)))
+        logger.info('epoch:{}, recon loss:{}'.format(epoch, np.mean(avg_recon_loss)))
+        logger.info('epoch:{}, classification loss:{}'.format(epoch, np.mean(avg_classification_loss)))
 
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
-            logging.info('-------------validation--------------')
+            logger.info('-------------validation--------------')
             with torch.no_grad():
 
                 recon_valid_error = []
@@ -344,12 +375,13 @@ def train_surf(config):
 
                     recon_valid_error.append(recon_valid_loss)
 
-                logging.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
-                logging.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
-                logging.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
-                logging.info('-------------------------------------')
+                logger.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
+                logger.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
+                logger.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
+                logger.info('-------------------------------------')
 
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
+            # Create model filename based on existing naming conventions
             if config.gnn == 'gat':
                 model_filename = (
                     f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
@@ -364,13 +396,8 @@ def train_surf(config):
             else:
                 assert False, 'Update naming conventions for model file name'
 
-            # Save checkpoint
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': cortexode.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                # Optionally save other info like loss
-            }, os.path.join(model_dir, model_filename))
+            # Save only the model's state_dict
+            torch.save(cortexode.state_dict(), os.path.join(model_dir, model_filename))
 
     # Save the final model
     if config.gnn == 'gat':
@@ -387,14 +414,8 @@ def train_surf(config):
     else:
         assert False, 'Update naming conventions for model file name'
 
-    # Save final checkpoint
-    torch.save({
-        'epoch': n_epochs,
-        'model_state_dict': cortexode.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        # Optionally save other info
-    }, os.path.join(model_dir, final_model_filename))
-
+    # Save final model's state_dict
+    torch.save(cortexode.state_dict(), os.path.join(model_dir, final_model_filename))
 
 if __name__ == '__main__':
     mp.set_start_method('spawn')
@@ -402,9 +423,9 @@ if __name__ == '__main__':
     if config.train_type == 'surfandseg':
         # Add default values for new config options if they are not set
         if not hasattr(config, 'compute_reconstruction_loss'):
-            config.compute_reconstruction_loss = True  # Default to True
+            config.compute_reconstruction_loss = 'yes'  # Changed to string to match earlier comparison
         if not hasattr(config, 'compute_classification_loss'):
-            config.compute_classification_loss = True  # Default to True
+            config.compute_classification_loss = 'yes'  # Changed to string to match earlier comparison
         train_surf(config)
     else:
         raise ValueError("Unsupported training type.")

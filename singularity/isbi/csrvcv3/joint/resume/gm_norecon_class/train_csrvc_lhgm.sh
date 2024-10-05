@@ -81,7 +81,7 @@ python trainCSRandParcellationResume.py \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
     --model_file 'TBD' \
-    --start_epoch -1 \
+    --start_epoch 201 \
     --data_name 'hcp' \
     --surf_hemi 'lh' \
     --surf_type 'gm' \

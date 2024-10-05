@@ -75,17 +75,17 @@ python trainCSRandParcellationResume.py \
     --gnn_layers $gnn_layer \
     --gat_heads $gat_head \
     --train_type 'surfandseg' \
-    --compute_reconstruction_loss 'no' \
+    --compute_reconstruction_loss 'yes' \
     --compute_classification_loss 'yes' \
     --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
-    --model_file 'model_gm_hcp_rh_vc_v3_csrvc_layers12_sf0.1_heads1_200epochs_euler_norecon_class_501338.pt' \
+    --model_file 'model_wm_hcp_rh_vc_v3_csrvc_layers8_sf0.1_heads1_50epochs_euler_recon_class_543679.pt' \
     --data_name 'hcp' \
     --surf_hemi 'rh' \
-    --surf_type 'gm' \
+    --surf_type 'wm' \
     --n_epochs 401 \
-    --start_epoch 201 \
+    --start_epoch 51 \
     --tag 'vc' \
     --device 'cuda' \
     --classification_loss_weight 1.0
