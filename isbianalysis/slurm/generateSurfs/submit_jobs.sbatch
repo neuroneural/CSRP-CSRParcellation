@@ -12,17 +12,17 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=washbee1@student.gsu.edu
 #SBATCH --oversubscribe
-#SBATCH --exclude=arctrddgxa001
-#SBATCH --array=1-M  # Replace M with the total number of lines (models) in your new CSV
+#SBATCH --exclude=arctrddgxa001,arctrdagn004
+#SBATCH --array=1-M  # Replace M with the total number of lines (excluding the header) in your new CSV
 
 # Brief pause before starting
 sleep 5s
 
 # Load Singularity module
-module load singularity/3.10.2
+module load singularity #/3.10.2
 
 # Define the path to your new CSV file
-CSV_FILE="/data/users2/washbee/CortexODE-CSRFusionNet/isbianalysis/models_to_run.csv"
+CSV_FILE="/data/users2/washbee/CortexODE-CSRFusionNet/isbianalysis/models_arguments.csv"
 
 # Check if the CSV file exists
 if [ ! -f "$CSV_FILE" ]; then
@@ -46,64 +46,64 @@ if [ -z "$LINE" ]; then
 fi
 
 # Read the CSV line into variables
-IFS=',' read -r surf_type data_name hemisphere version model_type layers heads epoch solver reconstruction classification random_number MODEL_FILE MODEL_DIR <<< "$LINE"
+IFS=',' read -r case data_name surf_hemi gnn_layers solver gat_heads \
+wm_model_dir wm_model_file_combined wm_model_file_deformation wm_model_file_classification \
+gm_model_dir gm_model_file_combined gm_model_file_deformation gm_model_file_classification <<< "$LINE"
 
 # Debugging: Print out the variables to verify correct assignment
-echo "surf_type: $surf_type"
+echo "case: $case"
 echo "data_name: $data_name"
-echo "hemisphere: $hemisphere"
-echo "version: $version"
-echo "model_type: $model_type"
-echo "layers: $layers"
-echo "heads: $heads"
-echo "epoch: $epoch"
+echo "surf_hemi: $surf_hemi"
+echo "gnn_layers: $gnn_layers"
 echo "solver: $solver"
-echo "reconstruction: $reconstruction"
-echo "classification: $classification"
-echo "random_number: $random_number"
-echo "MODEL_FILE: $MODEL_FILE"
-echo "MODEL_DIR: $MODEL_DIR"
+echo "gat_heads: $gat_heads"
+echo "wm_model_dir: $wm_model_dir"
+echo "wm_model_file_combined: $wm_model_file_combined"
+echo "wm_model_file_deformation: $wm_model_file_deformation"
+echo "wm_model_file_classification: $wm_model_file_classification"
+echo "gm_model_dir: $gm_model_dir"
+echo "gm_model_file_combined: $gm_model_file_combined"
+echo "gm_model_file_deformation: $gm_model_file_deformation"
+echo "gm_model_file_classification: $gm_model_file_classification"
 
 # Trim whitespace from variables (optional but recommended)
-surf_type=$(echo "$surf_type" | xargs)
+case=$(echo "$case" | xargs)
 data_name=$(echo "$data_name" | xargs)
-hemisphere=$(echo "$hemisphere" | xargs)
-version=$(echo "$version" | xargs)
-model_type=$(echo "$model_type" | xargs)
-layers=$(echo "$layers" | xargs)
-heads=$(echo "$heads" | xargs)
-epoch=$(echo "$epoch" | xargs)
+surf_hemi=$(echo "$surf_hemi" | xargs)
+gnn_layers=$(echo "$gnn_layers" | xargs)
 solver=$(echo "$solver" | xargs)
-reconstruction=$(echo "$reconstruction" | xargs)
-classification=$(echo "$classification" | xargs)
-random_number=$(echo "$random_number" | xargs)
-MODEL_FILE=$(echo "$MODEL_FILE" | xargs)
-MODEL_DIR=$(echo "$MODEL_DIR" | xargs)
+gat_heads=$(echo "$gat_heads" | xargs)
+wm_model_dir=$(echo "$wm_model_dir" | xargs)
+wm_model_file_combined=$(echo "$wm_model_file_combined" | xargs)
+wm_model_file_deformation=$(echo "$wm_model_file_deformation" | xargs)
+wm_model_file_classification=$(echo "$wm_model_file_classification" | xargs)
+gm_model_dir=$(echo "$gm_model_dir" | xargs)
+gm_model_file_combined=$(echo "$gm_model_file_combined" | xargs)
+gm_model_file_deformation=$(echo "$gm_model_file_deformation" | xargs)
+gm_model_file_classification=$(echo "$gm_model_file_classification" | xargs)
 
 # Path to your shell script that activates the Conda environment and runs the Python script
 INNER_SHELL_SCRIPT="/cortexode/isbianalysis/slurm/generateSurfs/run_generate_surfacev2.sh"
 
 # Execute the shell script inside the Singularity container
 singularity exec --nv \
-    --bind /data,\
-/data/users2/washbee/speedrun/:/speedrun,\
-/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
+    --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
     /data/users2/washbee/containers/csrf_sandbox/ \
     bash "$INNER_SHELL_SCRIPT" \
-        "$surf_type" \
+        "$case" \
         "$data_name" \
-        "$hemisphere" \
-        "$version" \
-        "$model_type" \
-        "$layers" \
-        "$heads" \
-        "$epoch" \
+        "$surf_hemi" \
+        "$gnn_layers" \
         "$solver" \
-        "$reconstruction" \
-        "$classification" \
-        "$random_number" \
-        "$MODEL_FILE" \
-        "$MODEL_DIR"
+        "$gat_heads" \
+        "$wm_model_dir" \
+        "$wm_model_file_combined" \
+        "$wm_model_file_deformation" \
+        "$wm_model_file_classification" \
+        "$gm_model_dir" \
+        "$gm_model_file_combined" \
+        "$gm_model_file_deformation" \
+        "$gm_model_file_classification"
 
 # Wait for the singularity command to finish
 wait

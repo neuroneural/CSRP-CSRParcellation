@@ -150,6 +150,10 @@ def load_models_and_weights(device, config_wm, config_gm):
         if wm_def_specified:
             model_file_wm_def = os.path.join(config_wm.model_dir, config_wm.model_file_wm_deformation)
             if not os.path.exists(model_file_wm_def):
+                print('not exists', model_file_wm_def)
+                print('model_dir', config_wm.model_dir)
+                print('config_wm.model_file_wm_deformation', config_wm.model_file_wm_deformation)
+                
                 print(f"WM Deformation Model file {model_file_wm_def} not found. Exiting.")
                 exit(1)
             rand_num_wm_def, start_epoch_wm_def = extract_rand_num_and_epoch_from_filename(config_wm.model_file_wm_deformation)
@@ -170,6 +174,10 @@ def load_models_and_weights(device, config_wm, config_gm):
         if wm_cls_specified:
             model_file_wm_cls = os.path.join(config_wm.model_dir, config_wm.model_file_wm_classification)
             if not os.path.exists(model_file_wm_cls):
+                print('not exists', model_file_wm_cls)
+                print('model_dir', config_wm.model_dir)
+                print('config_wm.model_file_wm_classification', config_wm.model_file_wm_classification)
+                
                 print(f"WM Classification Model file {model_file_wm_cls} not found. Exiting.")
                 exit(1)
             rand_num_wm_cls, start_epoch_wm_cls = extract_rand_num_and_epoch_from_filename(config_wm.model_file_wm_classification)
@@ -190,6 +198,9 @@ def load_models_and_weights(device, config_wm, config_gm):
         if gm_def_specified:
             model_file_gm_def = os.path.join(config_gm.model_dir, config_gm.model_file_gm_deformation)
             if not os.path.exists(model_file_gm_def):
+                print('not exists', model_file_gm_def)
+                print('model_dir', config_gm.model_dir)
+                print('config_gm.model_file_gm_deformation', config_gm.model_file_gm_deformation)
                 print(f"GM Deformation Model file {model_file_gm_def} not found. Exiting.")
                 exit(1)
             rand_num_gm_def, start_epoch_gm_def = extract_rand_num_and_epoch_from_filename(config_gm.model_file_gm_deformation)
@@ -208,8 +219,12 @@ def load_models_and_weights(device, config_wm, config_gm):
 
         # Load GM classification model
         if gm_cls_specified:
-            model_file_gm_cls = os.path.join(config_gm.model_dir, config_gm.model_file_gm_classification)
+            model_file_gm_cls = os.path.join(config_gm.model_dir.strip(), config_gm.model_file_gm_classification.strip())
             if not os.path.exists(model_file_gm_cls):
+                print('not exists', model_file_gm_cls)
+                print('model_dir', config_gm.model_dir)
+                print('config_gm.model_file_gm_classification', config_gm.model_file_gm_classification)
+                
                 print(f"GM Classification Model file {model_file_gm_cls} not found. Exiting.")
                 exit(1)
             rand_num_gm_cls, start_epoch_gm_cls = extract_rand_num_and_epoch_from_filename(config_gm.model_file_gm_classification)
@@ -217,6 +232,7 @@ def load_models_and_weights(device, config_wm, config_gm):
             model_gm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config_gm.sf, gnn_layers=config_gm.gnn_layers,
                                    use_gcn=use_gcn, gat_heads=config_gm.gat_heads, num_classes=config_gm.num_classes).to(device)
             checkpoint_gm_cls = torch.load(model_file_gm_cls, map_location=device)
+            print("loaded model", model_file_gm_cls)
             if 'model_state_dict' in checkpoint_gm_cls:
                 model_gm_cls.load_state_dict(checkpoint_gm_cls['model_state_dict'])
             else:
@@ -231,6 +247,10 @@ def load_models_and_weights(device, config_wm, config_gm):
         if hasattr(config_wm, 'model_file_wm') and config_wm.model_file_wm is not None:
             model_file_path_wm = os.path.join(config_wm.model_dir, config_wm.model_file_wm)
             if not os.path.exists(model_file_path_wm):
+                print('not exists', model_file_path_wm)
+                print('model_dir', config_wm.model_dir)
+                print('config_wm.model_file_wm', config_wm.model_file_wm)
+                
                 print(f"WM Model file {model_file_path_wm} not found. Exiting.")
                 exit(1)
             rand_num_wm, start_epoch_wm = extract_rand_num_and_epoch_from_filename(config_wm.model_file_wm)
@@ -251,6 +271,10 @@ def load_models_and_weights(device, config_wm, config_gm):
         if hasattr(config_gm, 'model_file_gm') and config_gm.model_file_gm is not None:
             model_file_path_gm = os.path.join(config_gm.model_dir, config_gm.model_file_gm)
             if not os.path.exists(model_file_path_gm):
+                print('not exists', model_file_path_gm)
+                print('model_dir', config_gm.model_dir)
+                print('config_gm.model_file_gm', config_gm.model_file_gm)
+                
                 print(f"GM Model file {model_file_path_gm} not found. Exiting.")
                 exit(1)
             rand_num_gm, start_epoch_gm = extract_rand_num_and_epoch_from_filename(config_gm.model_file_gm)

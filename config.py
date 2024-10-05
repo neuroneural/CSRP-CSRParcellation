@@ -9,6 +9,8 @@ def load_config():
     # for training
     parser.add_argument('--data_dir', default="../dataset/hcp600/", type=str, help="directory of the dataset")
     parser.add_argument('--model_dir', default="./ckpts/model/", type=str, help="directory for saving the models")
+    parser.add_argument('--wm_model_dir', default=None, type=str, help="directory for saving the models")
+    parser.add_argument('--gm_model_dir', default=None, type=str, help="directory for saving the models")
     parser.add_argument('--model_type', default="csrf", type=str, help="either: [csrf, cortexode]")
     parser.add_argument('--model_type2', default="baseline", type=str, help="either: [csrf, cortexode]")
     parser.add_argument('--segmentation_model_path', default="", type=str, help="path for segmentation model.")
@@ -20,6 +22,11 @@ def load_config():
 
     parser.add_argument('--seg_model_type', default="SegUnet", type=str, help="either: [SwinUNETR, MonaiUnet, SegUnet]")
     parser.add_argument('--model_file', default=None, type=str, help="File for resuming models.")
+    
+    parser.add_argument('--model_file_wm_classification', default=None, type=str, help="File for resuming models.")
+    parser.add_argument('--model_file_gm_classification', default=None, type=str, help="File for resuming models.")
+    parser.add_argument('--model_file_wm_deformation', default=None, type=str, help="File for resuming models.")
+    parser.add_argument('--model_file_gm_deformation', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--model_file_wm', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--model_file_gm', default=None, type=str, help="File for resuming models.")
     parser.add_argument('--gm_model_file', default=None, type=str, help="File for resuming models.")
