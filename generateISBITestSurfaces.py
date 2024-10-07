@@ -168,7 +168,9 @@ def load_models_and_weights(device, config):
         exit(1)
 
     if model_type == 'csrvcv3':
-        # Existing CSRVCV3 loading logic
+        # Check for models specified in config
+        wm_model_specified = hasattr(config, 'model_file_wm') and config.model_file_wm is not None
+        gm_model_specified = hasattr(config, 'model_file_gm') and config.model_file_gm is not None
         wm_def_specified = hasattr(config, 'model_file_wm_deformation') and config.model_file_wm_deformation is not None
         wm_cls_specified = hasattr(config, 'model_file_wm_classification') and config.model_file_wm_classification is not None
         gm_def_specified = hasattr(config, 'model_file_gm_deformation') and config.model_file_gm_deformation is not None
@@ -238,7 +240,7 @@ def load_models_and_weights(device, config):
             if not os.path.exists(model_file_gm_cls):
                 print(f"GM Classification Model file '{model_file_gm_cls}' not found. Exiting.")
                 exit(1)
-            rand_num_gm_cls, epoch_gm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_gm_classification)
+            rand_num_gm_cls, epoch_gm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_gm_classification.strip())
             print(f"GM Classification Model Random Number: {rand_num_gm_cls}, Epochs: {epoch_gm_cls}")
             epoch_info['gm_cls_epoch'] = epoch_gm_cls
             model_gm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
@@ -251,8 +253,48 @@ def load_models_and_weights(device, config):
             model_gm_cls.eval()
             models['model_gm_cls'] = model_gm_cls
 
+        elif wm_model_specified and gm_model_specified:
+            # Condition 'b'
+            condition = 'b'
+            print(f"Model condition: {condition}")
+
+            # Load WM Model (Combined Deformation and Classification)
+            model_file_wm = os.path.join(config.model_dir.strip(), config.model_file_wm.strip())
+            if not os.path.exists(model_file_wm):
+                print(f"WM Model file '{model_file_wm}' not found. Exiting.")
+                exit(1)
+            rand_num_wm, epoch_wm = extract_rand_num_and_epoch_from_filename(config.model_file_wm)
+            print(f"WM Model Random Number: {rand_num_wm}, Epochs: {epoch_wm}")
+            epoch_info['wm_epoch'] = epoch_wm
+            model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                               use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            checkpoint_wm = torch.load(model_file_wm, map_location=device)
+            if 'model_state_dict' in checkpoint_wm:
+                model_wm.load_state_dict(checkpoint_wm['model_state_dict'])
+            else:
+                model_wm.load_state_dict(checkpoint_wm)
+            model_wm.eval()
+            models['model_wm'] = model_wm
+
+            # Load GM Model (Combined Deformation and Classification)
+            model_file_gm = os.path.join(config.model_dir.strip(), config.model_file_gm.strip())
+            if not os.path.exists(model_file_gm):
+                print(f"GM Model file '{model_file_gm}' not found. Exiting.")
+                exit(1)
+            rand_num_gm, epoch_gm = extract_rand_num_and_epoch_from_filename(config.model_file_gm)
+            print(f"GM Model Random Number: {rand_num_gm}, Epochs: {epoch_gm}")
+            epoch_info['gm_epoch'] = epoch_gm
+            model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                               use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            checkpoint_gm = torch.load(model_file_gm, map_location=device)
+            if 'model_state_dict' in checkpoint_gm:
+                model_gm.load_state_dict(checkpoint_gm['model_state_dict'])
+            else:
+                model_gm.load_state_dict(checkpoint_gm)
+            model_gm.eval()
+            models['model_gm'] = model_gm
+
         else:
-            # Other conditions can be handled similarly if needed
             print("Unsupported condition for CSRVCV3 models. Exiting.")
             exit(1)
 
@@ -319,7 +361,7 @@ if __name__ == '__main__':
     surf_hemi = config.surf_hemi           # 'lh', 'rh'
     device = config.device                 # e.g., 'cuda' or 'cpu'
     tag = config.tag                       # Identity of the experiment
-    model_type = config.model_type # 'csrvcv3' or 'cortexode'
+    model_type = config.model_type         # 'csrvcv3' or 'cortexode'
 
     C = config.dim_h                       # Hidden dimension of features
     K = config.kernel_size                 # Kernel / cube size
@@ -474,6 +516,57 @@ if __name__ == '__main__':
                         print(f"Unsupported model architecture '{model_type}' for condition 'a'. Skipping.")
                         continue
 
+
+                elif condition == 'b':
+                    if model_type == 'csrvcv3':
+                        # Combined Deformation and Classification for WM
+                        model_wm = models.get('model_wm', None)
+                        if model_wm is not None:
+                            model_wm.set_data(v_in_tensor, volume_in, f_in_tensor)
+                            v_wm_pred = odeint(model_wm, v_in_tensor, t=T, method=solver,
+                                               options=dict(step_size=step_size))[-1]
+
+                            # Obtain class logits from the same model
+                            _dx = model_wm(T, v_wm_pred)
+                            class_logits_wm = model_wm.get_class_logits()
+                            # Add LogSoftmax
+                            class_logits_wm = class_logits_wm.unsqueeze(0)
+                            class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
+                            class_probs_wm = class_logits_wm.permute(0, 2, 1)
+                            class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                        else:
+                            print(f"WM Model not loaded for subject {subid}. Skipping.")
+                            continue
+
+                        # Inflate and smooth for grey matter
+                        v_gm_in = v_wm_pred.clone()
+                        for i in range(n_inflate):
+                            v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
+                            n_in = compute_normal(v_gm_in, f_in_tensor)
+                            v_gm_in += rho * n_in
+
+                        model_gm = models.get('model_gm', None)
+                        if model_gm is not None:
+                            model_gm.set_data(v_gm_in, volume_in, f_in_tensor)
+                            v_gm_pred = odeint(model_gm, v_gm_in, t=T, method=solver,
+                                               options=dict(step_size=step_size/2))[-1]
+
+                            # Obtain class logits from the same model
+                            _dx = model_gm(T, v_gm_pred)
+                            class_logits_gm = model_gm.get_class_logits()
+                            # Add LogSoftmax
+                            class_logits_gm = class_logits_gm.unsqueeze(0)
+                            class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
+                            class_probs_gm = class_logits_gm.permute(0, 2, 1)
+                            class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
+                        else:
+                            print(f"GM Model not loaded for subject {subid}. Skipping.")
+                            continue
+
+                    else:
+                        print(f"Unsupported model architecture '{model_type}' for condition 'b'. Skipping.")
+                        continue
+
                 elif condition == 'cortexode':
                     if model_type == 'cortexode':
                         # Deformation using CortexODE for WM
@@ -539,6 +632,9 @@ if __name__ == '__main__':
                 if condition == 'a':
                     wm_epoch = epoch_info.get('wm_def_epoch', None)
                     gm_epoch = epoch_info.get('gm_def_epoch', None)
+                elif condition == 'b':
+                    wm_epoch = epoch_info.get('wm_epoch', None)
+                    gm_epoch = epoch_info.get('gm_epoch', None)
                 elif condition == 'cortexode':
                     wm_epoch = epoch_info.get('wm_epoch', None)
                     gm_epoch = epoch_info.get('gm_epoch', None)
@@ -556,7 +652,7 @@ if __name__ == '__main__':
                 gt_surface_path_wm = os.path.join(wm_gt_dir.strip(), gt_surface_basename_wm.strip())
                 gt_surface_path_gm = os.path.join(gm_gt_dir.strip(), gt_surface_basename_gm.strip())
 
-                # Save the predicted surface with annotations if using CSRVCV3
+                # Save the predicted surface with annotations
                 try:
                     if model_type == 'csrvcv3':
                         save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
@@ -564,6 +660,7 @@ if __name__ == '__main__':
 
                         save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred, ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=gm_epoch)
                         print(f"Saved predicted grey matter surface with annotations for {subid} at '{pred_surface_path_gm}_epoch{gm_epoch}.surf' and '.annot'")
+
                     elif model_type == 'cortexode':
                         # Save without annotations
                         save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
@@ -580,17 +677,11 @@ if __name__ == '__main__':
                 # ------ Save ground truth surfaces -------
                 try:
                     # Save WM ground truth surface
-                    #gt_surface_path_wm_full = f"{gt_surface_path_wm}.surf"
-                    #nib.freesurfer.io.write_geometry(gt_surface_path_wm_full, v_gt_wm_mapped, f_gt_wm_mapped)
                     save_mesh_with_annotations(v_gt_wm_mapped, f_gt_wm_mapped, labels=labels_wm.cpu().numpy(), ctab=ctab_wm, save_path_fs=gt_surface_path_wm, data_name=data_name)
-                        
                     print(f"Saved ground truth white matter surface for {subid} at '{gt_surface_path_wm}'")
 
                     # Save GM ground truth surface
-                    # gt_surface_path_gm_full = f"{gt_surface_path_gm}.surf"
-                    # nib.freesurfer.io.write_geometry(gt_surface_path_gm_full, v_gt_gm_mapped, f_gt_gm_mapped)
                     save_mesh_with_annotations(v_gt_gm_mapped, f_gt_gm_mapped, labels=labels_gm.cpu().numpy(), ctab=ctab_gm, save_path_fs=gt_surface_path_gm, data_name=data_name)
-                    
                     print(f"Saved ground truth grey matter surface for {subid} at '{gt_surface_path_gm}'")
                 except Exception as e:
                     print(f"Error saving ground truth mesh for subject {subid}: {e}. Skipping.")
