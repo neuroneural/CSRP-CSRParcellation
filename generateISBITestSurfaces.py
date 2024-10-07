@@ -580,14 +580,18 @@ if __name__ == '__main__':
                 # ------ Save ground truth surfaces -------
                 try:
                     # Save WM ground truth surface
-                    gt_surface_path_wm_full = f"{gt_surface_path_wm}.surf"
-                    nib.freesurfer.io.write_geometry(gt_surface_path_wm_full, v_gt_wm_mapped, f_gt_wm_mapped)
-                    print(f"Saved ground truth white matter surface for {subid} at '{gt_surface_path_wm_full}'")
+                    #gt_surface_path_wm_full = f"{gt_surface_path_wm}.surf"
+                    #nib.freesurfer.io.write_geometry(gt_surface_path_wm_full, v_gt_wm_mapped, f_gt_wm_mapped)
+                    save_mesh_with_annotations(v_gt_wm_mapped, f_gt_wm_mapped, labels=labels_wm.cpu().numpy(), ctab=ctab_wm, save_path_fs=gt_surface_path_wm, data_name=data_name)
+                        
+                    print(f"Saved ground truth white matter surface for {subid} at '{gt_surface_path_wm}'")
 
                     # Save GM ground truth surface
-                    gt_surface_path_gm_full = f"{gt_surface_path_gm}.surf"
-                    nib.freesurfer.io.write_geometry(gt_surface_path_gm_full, v_gt_gm_mapped, f_gt_gm_mapped)
-                    print(f"Saved ground truth grey matter surface for {subid} at '{gt_surface_path_gm_full}'")
+                    # gt_surface_path_gm_full = f"{gt_surface_path_gm}.surf"
+                    # nib.freesurfer.io.write_geometry(gt_surface_path_gm_full, v_gt_gm_mapped, f_gt_gm_mapped)
+                    save_mesh_with_annotations(v_gt_gm_mapped, f_gt_gm_mapped, labels=labels_gm.cpu().numpy(), ctab=ctab_gm, save_path_fs=gt_surface_path_gm, data_name=data_name)
+                    
+                    print(f"Saved ground truth grey matter surface for {subid} at '{gt_surface_path_gm}'")
                 except Exception as e:
                     print(f"Error saving ground truth mesh for subject {subid}: {e}. Skipping.")
                     continue
