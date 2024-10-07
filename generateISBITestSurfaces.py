@@ -110,7 +110,9 @@ def save_mesh_with_annotations(verts, faces, labels=None, ctab=None, save_path_f
     else:
         surf_path = f"{save_path_fs}.surf"
         annot_path = f"{save_path_fs}.annot"
-
+    if os.path.exists(surf_path) or os.path.exists(annot_path):
+        print('surf or annot file exists, continuing')
+        return
     # Save geometry
     nib.freesurfer.io.write_geometry(surf_path, verts, faces)
 
@@ -643,8 +645,8 @@ if __name__ == '__main__':
                     wm_epoch = None
                     gm_epoch = None
 
-                pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_wm_pred'
-                pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gm_pred'
+                pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_wm_pred'
+                pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_gm_pred'
                 gt_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_wm_gt'
                 gt_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gm_gt'
 
