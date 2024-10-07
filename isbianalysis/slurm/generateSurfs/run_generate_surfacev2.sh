@@ -44,15 +44,12 @@ cd /cortexode/
 python_command="python generateISBITestSurfaces.py \
     --data_dir '/speedrun/isbi-data-dev/' \
     --data_name '$data_name' \
-    --model_type 'csrvcv3' \
     --surf_hemi '$surf_hemi' \
     --gnn_layers '$gnn_layers' \
     --gnn 'gat' \
     --gat_heads '$gat_heads' \
     --solver '$solver' \
     --seg_model_file 'model_seg_hcp_Unet_200epochs.pt' \
-    --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
-    --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
     --result_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/result/' \
     --wm_model_dir '$wm_model_dir' \
     --gm_model_dir '$gm_model_dir' \
@@ -64,10 +61,23 @@ if [ "$case" == "a" ]; then
                       --model_file_wm_classification '$wm_model_file_classification' \
                       --model_file_gm_deformation '$gm_model_file_deformation' \
                       --model_file_gm_classification '$gm_model_file_classification' \
+                      --model_type 'csrvcv3' \
+                      --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
+                      --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
 "
 elif [ "$case" == "b" ]; then
     python_command+=" --model_file_wm '$wm_model_file_combined' \
                       --model_file_gm '$gm_model_file_combined' \
+                      --model_type 'csrvcv3' \
+                      --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
+                      --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
+"
+elif [ "$case" == "c" ]; then
+    python_command+=" --model_file_wm '$wm_model_file_deformation' \
+                      --model_file_gm '$gm_model_file_deformation' \
+                      --model_type 'cortexode' \
+                      --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/' \
+                      --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/init/' \
 "
 else
     echo "Unknown case: $case"

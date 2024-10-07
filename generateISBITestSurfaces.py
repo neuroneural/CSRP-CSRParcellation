@@ -305,7 +305,7 @@ def load_models_and_weights(device, config):
 
         # Load CortexODE for WM
         if hasattr(config, 'model_file_wm') and config.model_file_wm is not None:
-            model_file_wm = os.path.join(config.model_dir.strip(), config.model_file_wm.strip())
+            model_file_wm = os.path.join(config.wm_model_dir.strip(), config.model_file_wm.strip())
             if not os.path.exists(model_file_wm):
                 print(f"CortexODE WM Model file '{model_file_wm}' not found. Exiting.")
                 exit(1)
@@ -325,7 +325,7 @@ def load_models_and_weights(device, config):
 
         # Load CortexODE for GM
         if hasattr(config, 'model_file_gm') and config.model_file_gm is not None:
-            model_file_gm = os.path.join(config.model_dir.strip(), config.model_file_gm.strip())
+            model_file_gm = os.path.join(config.gm_model_dir.strip(), config.model_file_gm.strip())
             if not os.path.exists(model_file_gm):
                 print(f"CortexODE GM Model file '{model_file_gm}' not found. Exiting.")
                 exit(1)
@@ -375,6 +375,7 @@ if __name__ == '__main__':
     # ------ Load the segmentation network ------
     if config.seg_model_file is not None:
         segnet = Unet(c_in=1, c_out=3).to(device)
+        print("segnet file is located", os.path.join(config.model_dir.strip(), config.seg_model_file.strip()))
         segnet.load_state_dict(torch.load(os.path.join(config.model_dir.strip(), config.seg_model_file.strip()), map_location=device))
         segnet.eval()
         print(f"Loaded segmentation model from '{config.seg_model_file}'")
@@ -384,7 +385,7 @@ if __name__ == '__main__':
 
     # ------ Load the models and infer the condition ------
     models, condition, epoch_info = load_models_and_weights(device, config)
-
+    print("models",models)
     # ------ Create result subdirectories based on condition ------
     folder_name = f"{condition}"
     result_subdir = os.path.join(result_dir.strip(), folder_name.strip())
