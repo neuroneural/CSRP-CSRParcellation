@@ -125,7 +125,7 @@ def parse_log_file(filepath, mode, max_epoch):
                                 pass  # Handle cases where conversion fails
 
                 # Check for reconstruction validation error (only if reconstruction is involved)
-                if 'recon_' in mode or mode == '_recon_class':
+                if '_recon' in mode or mode == '_recon_class':#possible error
                     recon_match = re.search(r'reconstruction validation error:([^\s]+)', line)
                     if recon_match:
                         recon_value = recon_match.group(1)
@@ -152,7 +152,7 @@ def parse_log_file(filepath, mode, max_epoch):
             metrics_extracted['max_validation_dice'] = 'No dice data found'
             metrics_extracted['max_validation_dice_epoch'] = 'No dice epoch data found'
 
-    if 'recon_' in mode or mode == '_recon_class':
+    if '_recon' in mode or mode == '_recon_class':
         if min_recon_error != float('inf'):
             metrics_extracted['min_recon_error'] = min_recon_error
             metrics_extracted['min_recon_error_epoch'] = min_recon_error_epoch
@@ -162,64 +162,6 @@ def parse_log_file(filepath, mode, max_epoch):
 
     return metrics_extracted, data_found
 
-# Function to save ground truth surfaces
-def save_ground_truth_surf(v_gt, f_gt, save_path_fs, data_name='hcp'):
-    """
-    Saves the ground truth surface using nibabel.
-    """
-    verts = v_gt.squeeze()
-    faces = f_gt.squeeze().astype(np.int32)
-
-    assert not np.isnan(verts.max()), "The value is NaN in ground truth vertices."
-    assert not np.isnan(verts.min()), "The value is NaN in ground truth vertices."
-
-    # Save geometry
-    nib.freesurfer.io.write_geometry(save_path_fs + '.surf', verts, faces)
-
-# Function to save predicted surfaces with optional annotations
-def save_mesh_with_annotations(verts, faces, labels=None, ctab=None, save_path_fs=None, data_name='hcp', epoch_info=None):
-    """
-    Save the mesh with annotations using nibabel.
-
-    Parameters:
-    - verts: NumPy array of vertices.
-    - faces: NumPy array of faces.
-    - labels: (Optional) NumPy array of labels.
-    - ctab: (Optional) Color table for annotations.
-    - save_path_fs: Path to save the FreeSurfer files.
-    - data_name: Name of the dataset (e.g., 'hcp', 'adni').
-    - epoch_info: (Optional) String containing epoch information to include in file names.
-    """
-    if save_path_fs is None:
-        raise ValueError("save_path_fs must be provided to save the mesh.")
-
-    verts = verts.squeeze()
-    faces = faces.squeeze().astype(np.int32)
-
-    assert not np.isnan(verts.max()), "The value is NaN in vertices."
-    assert not np.isnan(verts.min()), "The value is NaN in vertices."
-
-    if labels is not None:
-        labels = labels.squeeze().astype(np.int32)
-        if isinstance(ctab, torch.Tensor):
-            ctab = ctab.numpy()
-        ctab = ctab.astype(np.int32)
-        assert ctab.shape[1] == 5, "ctab should have 5 columns for RGBA and region labels."
-
-    # Modify save paths to include epoch information
-    if epoch_info is not None:
-        surf_path = f"{save_path_fs}_epoch{epoch_info}.surf"
-        annot_path = f"{save_path_fs}_epoch{epoch_info}.annot"
-    else:
-        surf_path = f"{save_path_fs}.surf"
-        annot_path = f"{save_path_fs}.annot"
-
-    # Save geometry
-    nib.freesurfer.io.write_geometry(surf_path, verts, faces)
-
-    # Save annotations if labels are provided
-    if labels is not None and ctab is not None:
-        nib.freesurfer.io.write_annot(annot_path, labels, ctab, decode_names(), fill_ctab=False)
 
 def main(args):
     # Create MultiIndex for columns
@@ -253,7 +195,7 @@ def main(args):
                     ('', 'GAT Layers'): layer
                 }
                 rows_list.append(row)
-
+    
     # Create DataFrame from the list of rows
     df = pd.DataFrame(rows_list, columns=index)
 
@@ -262,6 +204,7 @@ def main(args):
         """
         Retrieves the max_epoch value for a given mode from the max_epochs_dict.
         """
+        
         return max_epochs_dict.get(mode, 60)  # Default to 60 if not specified
 
     # Function to decode region names (placeholder)
@@ -356,7 +299,7 @@ def main(args):
             best_epoch = None
             if 'max_validation_dice_epoch' in metrics and '_class' in mode:
                 best_epoch = metrics['max_validation_dice_epoch']
-            elif 'min_recon_error_epoch' in metrics and ('recon_' in mode or mode == '_recon_class'):
+            elif 'min_recon_error_epoch' in metrics and ('_recon' in mode or mode == '_recon_class'):#potential error
                 best_epoch = metrics['min_recon_error_epoch']
 
             if best_epoch is not None and random_number is not None:

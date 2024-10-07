@@ -2,8 +2,8 @@
 #SBATCH -n 1
 #SBATCH -c 4
 #SBATCH --mem=20g
-#SBATCH -p qTRDGPU
-#SBATCH --gres=gpu:RTX:1
+#SBATCH -p qTRDGPUH
+#SBATCH --gres=gpu:A100:1
 #SBATCH -t 1-00:00
 #SBATCH -J gensurfis
 #SBATCH -e jobs/error%A_%a.err

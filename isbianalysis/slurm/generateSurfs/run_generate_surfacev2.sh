@@ -44,6 +44,7 @@ cd /cortexode/
 python_command="python generateISBITestSurfaces.py \
     --data_dir '/speedrun/isbi-data-dev/' \
     --data_name '$data_name' \
+    --model_type 'csrvcv3' \
     --surf_hemi '$surf_hemi' \
     --gnn_layers '$gnn_layers' \
     --gnn 'gat' \
