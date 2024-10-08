@@ -42,7 +42,7 @@ cd /cortexode/
 
 # Build the Python command with the provided arguments
 python_command="python generateISBITestSurfaces.py \
-    --data_dir '/speedrun/isbi-data-dev/' \
+    --data_dir '/speedrun/cortexode-data-rp/' \
     --data_name '$data_name' \
     --surf_hemi '$surf_hemi' \
     --gnn_layers '$gnn_layers' \
