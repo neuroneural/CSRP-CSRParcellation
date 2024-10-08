@@ -250,12 +250,15 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
     - gt_base_path (str): Base path to the subject's ground truth directories.
     - output_dir (str): Directory where results are stored.
     """
-    print('Processing Subject:', subj_id)
+    logging.info(f'Processing Subject: {subj_id}')
     hemispheres = ['lh', 'rh']
     surf_types = ['gm', 'wm']  # 'gm' for Grey Matter, 'wm' for White Matter
 
     for hemi in hemispheres:
+        logging.info(f'hemi {hemi}')
         for surf_type in surf_types:
+            logging.info(f'surf_type {surf_type}')
+        
             # Define paths for predictions and ground truths
             pred_surf_dir = os.path.join(subject_base_path, surf_type, hemi)
             gt_surf_dir = os.path.join(gt_base_path, f"{surf_type}_gt", hemi)
@@ -271,10 +274,11 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
                 continue
 
             # List all prediction .surf files
-            pred_files = [f for f in os.listdir(pred_surf_dir) if f.endswith('.surf')]
-
+            pred_files = [f for f in os.listdir(pred_surf_dir) if f.endswith('.surf') and (subj_id in f)]
+            logging.info(f'pred_files {pred_files}')
             for pred_file in pred_files:
                 # Extract GNN layers and epoch from the prediction filename
+                logging.info(f'pred_file {pred_file}')
                 if surf_type == 'gm':
                     pattern = r'gnnlayers(\d+)_gm_pred_epoch(\d+)\.surf'
                 else:
@@ -288,11 +292,11 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
 
                 # Construct full paths for predicted and ground truth surfaces
                 pred_surf_path = os.path.join(pred_surf_dir, pred_file)
-
+                logging.info(f'pred_surf_path {pred_surf_path}')
                 # Determine corresponding ground truth file
                 gt_file = f"hcp_{hemi}_{subj_id}_{surf_type}_gt.surf"
                 gt_surf_path = os.path.join(gt_surf_dir, gt_file)
-
+                logging.info(f'gt_surf_path {gt_surf_path}')
                 # Check if ground truth file exists
                 if not os.path.exists(gt_surf_path):
                     logging.warning(f"Ground truth file does not exist: {gt_surf_path}. Skipping.")
@@ -311,8 +315,10 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
                 hausdorff_dist = compute_hausdorff_distance(pred_mesh, gt_mesh)
 
                 # Compute self-intersections for the predicted mesh
-                self_collision_count = count_self_collisions(pred_mesh, k=30)
-                total_triangles = len(pred_mesh['faces'])
+                # self_collision_count = count_self_collisions(pred_mesh, k=30)
+                # total_triangles = len(pred_mesh['faces'])
+                self_collision_count = -1
+                total_triangles = -1
 
                 # Prepare data rows
                 data_chamfer = [framework_name, subj_id, surf_type, hemi, 'Chamfer Distance', '', chamfer_dist, '']
@@ -324,7 +330,7 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
                 write_to_csv(csv_file_path, lock, data_hausdorff)
                 write_to_csv(csv_file_path, lock, data_self_intersect)
 
-    print(f"Completed processing for subject {subj_id}")
+    logging.info(f"Completed processing for subject {subj_id}")
 
 if __name__ == "__main__":
     """
@@ -337,7 +343,7 @@ if __name__ == "__main__":
     """
 
     if len(sys.argv) < 6:
-        print("Usage: python analyze_subject_csrp.py <subj_id> <csv_file_path> <framework_name> <subject_base_path> <gt_base_path>")
+        logging.info("Usage: python analyze_subject_csrp.py <subj_id> <csv_file_path> <framework_name> <subject_base_path> <gt_base_path>")
         sys.exit(1)
     
     subj_id = sys.argv[1]
@@ -347,12 +353,12 @@ if __name__ == "__main__":
     gt_base_path = sys.argv[5]
     output_dir = '../result/'
 
-    print('Subject ID:', subj_id)
-    print('CSV File Path:', csv_file_path)
-    print('Framework Name:', framework_name)
-    print('Subject Base Path:', subject_base_path)
-    print('Ground Truth Base Path:', gt_base_path)
-    print("Output Directory:", output_dir)
+    logging.info(f'Subject ID: {subj_id}')
+    logging.info(f'CSV File Path: {csv_file_path}')
+    logging.info(f'Framework Name: {framework_name}')
+    logging.info(f'Subject Base Path: {subject_base_path}')
+    logging.info(f'Ground Truth Base Path: {gt_base_path}')
+    logging.info(f'Output Directory: {output_dir}')
     
     # Initialize a lock for parallel-safe writing
     lock = Lock()
