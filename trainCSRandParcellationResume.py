@@ -284,6 +284,7 @@ def train_surf(config):
                 optimizer.step()
                 avg_recon_loss.append(reconstruction_loss.item())
                 if compute_classification_loss:
+                    optimizer.zero_grad()
                     # In-distribution approximate classification loss
                     v_out_np = v_out.detach().cpu().numpy()[0]
                     v_gt_np = v_gt.detach().cpu().numpy()[0]
@@ -305,8 +306,11 @@ def train_surf(config):
                         continue  # Skip this batch
                     
                     # Compute classification loss
-                    classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), nearest_gt_labels.squeeze())
+                    classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
                     in_dist_avg_classification_loss.append(classification_loss.item())
+                    classification_loss.backward()
+                    optimizer.step()
+
     
             # Classification Loss
             if compute_classification_loss:
@@ -326,7 +330,11 @@ def train_surf(config):
                     continue  # Skip this batch
 
                 # Compute classification loss
-                classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), labels.squeeze())
+                assert class_logits.shape[-1] == num_classes
+                assert class_logits.dim() == 2
+                assert labels.shape[0] == class_logits.shape[0]
+                assert labels.dim() == 1
+                classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
                 classification_loss.backward()
                 optimizer.step()
                 avg_classification_loss.append(classification_loss.item())
@@ -400,7 +408,12 @@ def train_surf(config):
                                 continue  # Skip this batch
                             
                             # Compute classification loss
-                            classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), nearest_gt_labels.squeeze())
+                            assert class_logits.shape[-1] == num_classes
+                            assert class_logits.dim() == 2
+                            assert nearest_gt_labels.shape[0] == class_logits.shape[0]
+                            assert nearest_gt_labels.dim() == 1
+                            
+                            classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
                             in_dist_classification_valid_error.append(classification_loss.item())
                             
                             class_logits = class_logits.unsqueeze(0)
@@ -429,7 +442,13 @@ def train_surf(config):
                             continue  # Skip this batch
                         
                         # Compute classification loss
-                        classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), labels.squeeze())
+                        
+                        assert class_logits.shape[-1] == num_classes
+                        assert class_logits.dim() == 2
+                        assert labels.shape[0] == class_logits.shape[0]
+                        assert labels.dim() == 1
+                            
+                        classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
                         classification_valid_error.append(classification_loss.item())
                         
                         # Compute Dice score
