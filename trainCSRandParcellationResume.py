@@ -379,7 +379,8 @@ def train_surf(config):
                     labels = labels.squeeze(0).to(device).long()
 
                     recon_valid_loss = 0
-
+                    chamfer_valid_loss = 0
+                    mse_valid_loss = 0
                     if compute_reconstruction_loss:
                         # Set initial state and data
                         cortexode.set_data(v_in, volume_in, f=f_in)

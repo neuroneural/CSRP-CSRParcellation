@@ -13,6 +13,33 @@ from torch_geometric.utils import dropout_edge
 # If not, you need to implement compute_normal or adjust accordingly
 # from util.mesh import compute_normal
 
+def dropout_edge_but_keep_self_loops(edge_index, drop_prob, training):
+    """
+    Drop edges in edge_index but retain self-loops.
+
+    Parameters:
+    - edge_index: Tensor of shape [2, num_edges], representing the edge list.
+    - drop_prob: Probability to drop an edge.
+    - training: Boolean flag indicating if the model is in training mode.
+
+    Returns:
+    - final_edge_index: Tensor containing the edge list after dropout, with self-loops preserved.
+    """
+    row, col = edge_index
+    self_loops_mask = row == col
+
+    # Separate self-loops and non-self-loops
+    self_loops = edge_index[:, self_loops_mask]
+    non_self_loops = edge_index[:, ~self_loops_mask]
+
+    # Apply dropout to non-self-loops
+    dropped_non_self_loops, _ = dropout_edge(non_self_loops, p=drop_prob, training=training)
+
+    # Recombine self-loops and remaining edges
+    final_edge_index = torch.cat([self_loops, dropped_non_self_loops], dim=1)
+
+    return final_edge_index
+
 def compute_normal(v, f):
     """
     Placeholder for compute_normal function.
@@ -134,7 +161,8 @@ class CombinedGNN(nn.Module):
 
     def forward(self, x, edge_index):
         for i, layer in enumerate(self.layers):
-            edge_index, _ = dropout_edge(edge_index, p=self.dropedge_prob, training=self.training)
+            edge_index = dropout_edge_but_keep_self_loops(edge_index, drop_prob=self.dropedge_prob, training=self.training)
+
             x = layer(x, edge_index)
             x = F.leaky_relu(x, 0.2)
         
