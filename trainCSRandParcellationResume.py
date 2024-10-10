@@ -283,7 +283,7 @@ def train_surf(config):
                 reconstruction_loss.backward()
                 optimizer.step()
                 avg_recon_loss.append(reconstruction_loss.item())
-                if compute_classification_loss:
+                if compute_classification_loss and chamfer_loss < .04:
                     optimizer.zero_grad()
                     # In-distribution approximate classification loss
                     v_out_np = v_out.detach().cpu().numpy()[0]
