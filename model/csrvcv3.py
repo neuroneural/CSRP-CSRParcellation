@@ -7,6 +7,8 @@ from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.utils import add_self_loops
 from pytorch3d.structures import Meshes
 
+from torch_geometric.utils import dropout_edge
+
 # Assuming compute_normal is available from util.mesh or elsewhere
 # If not, you need to implement compute_normal or adjust accordingly
 # from util.mesh import compute_normal

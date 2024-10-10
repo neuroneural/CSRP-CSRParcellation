@@ -9,7 +9,6 @@ from pytorch3d.structures import Meshes
 
 from torch_geometric.utils import dropout_edge
 
-
 # Assuming compute_normal is available from util.mesh or elsewhere
 # If not, you need to implement compute_normal or adjust accordingly
 # from util.mesh import compute_normal
@@ -111,11 +110,12 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
 
 class CombinedGNN(nn.Module):
-    def __init__(self, input_features=256, hidden_features=128, output_dim=3, num_classes=10, num_layers=2, gat_heads=8, use_gcn=True):
+    def __init__(self, input_features=256, hidden_features=128, output_dim=3, num_classes=10, num_layers=2, gat_heads=8, use_gcn=True,dropedge_rate=0.5):
         super(CombinedGNN, self).__init__()
         
         self.layers = nn.ModuleList()
         current_dim = input_features
+        self.dropedge_rate = dropedge_rate
 
         # GNN layers
         for i in range(num_layers):
@@ -134,6 +134,7 @@ class CombinedGNN(nn.Module):
 
     def forward(self, x, edge_index):
         for i, layer in enumerate(self.layers):
+            edge_index, _ = dropout_edge(edge_index, p=self.dropedge_rate, training=self.training)
             x = layer(x, edge_index)
             x = F.leaky_relu(x, 0.2)
         
