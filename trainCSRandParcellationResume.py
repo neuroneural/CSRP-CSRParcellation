@@ -211,7 +211,8 @@ def train_surf(config):
                             gnn_layers=config.gnn_layers,
                             use_gcn=use_gcn,
                             gat_heads=config.gat_heads,
-                            num_classes=num_classes).to(device)
+                            num_classes=num_classes,
+                            dropedge_prob=config.dropedge_prob).to(device)
     else:
         raise ValueError("Unsupported model type or version.")
 

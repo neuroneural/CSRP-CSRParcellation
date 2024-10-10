@@ -110,12 +110,12 @@ class NodeFeatureNet(nn.Module):
         return self.neighbors.clone()
 
 class CombinedGNN(nn.Module):
-    def __init__(self, input_features=256, hidden_features=128, output_dim=3, num_classes=10, num_layers=2, gat_heads=8, use_gcn=True,dropedge_rate=0.5):
+    def __init__(self, input_features=256, hidden_features=128, output_dim=3, num_classes=10, num_layers=2, gat_heads=8, use_gcn=True,dropedge_prob=0.5):
         super(CombinedGNN, self).__init__()
         
         self.layers = nn.ModuleList()
         current_dim = input_features
-        self.dropedge_rate = dropedge_rate
+        self.dropedge_prob = dropedge_prob
 
         # GNN layers
         for i in range(num_layers):
@@ -134,7 +134,7 @@ class CombinedGNN(nn.Module):
 
     def forward(self, x, edge_index):
         for i, layer in enumerate(self.layers):
-            edge_index, _ = dropout_edge(edge_index, p=self.dropedge_rate, training=self.training)
+            edge_index, _ = dropout_edge(edge_index, p=self.dropedge_prob, training=self.training)
             x = layer(x, edge_index)
             x = F.leaky_relu(x, 0.2)
         
@@ -152,7 +152,7 @@ class CombinedGNN(nn.Module):
         return dx, class_logits
 
 class DeformBlockGNN(nn.Module):
-    def __init__(self, C=128, K=5, n_scale=1, sf=0.1, gnn_layers=2, use_gcn=True, gat_heads=8, num_classes=10, use_pytorch3d_normal=True):
+    def __init__(self, C=128, K=5, n_scale=1, sf=0.1, gnn_layers=2, use_gcn=True, gat_heads=8, num_classes=10, use_pytorch3d_normal=True,dropedge_prob=.5):
         super(DeformBlockGNN, self).__init__()
         self.sf = sf
         self.nodeFeatureNet = NodeFeatureNet(C=C, K=K, n_scale=n_scale, use_pytorch3d_normal=use_pytorch3d_normal)
@@ -162,7 +162,8 @@ class DeformBlockGNN(nn.Module):
                                num_classes=num_classes,
                                num_layers=gnn_layers,
                                gat_heads=gat_heads,
-                               use_gcn=use_gcn)
+                               use_gcn=use_gcn,
+                               dropedge_prob=dropedge_prob)
         self.class_logits = None  # To store classification logits
 
     def set_data(self, x, V, f=None, edge_list=None):
@@ -191,7 +192,8 @@ class CSRVCV4(nn.Module):
                        use_gcn=True,
                        gat_heads=8,
                        use_pytorch3d_normal=True,
-                       num_classes=10):
+                       num_classes=10,
+                       dropedge_prob=.5):
         
         super(CSRVCV4, self).__init__()
 
@@ -206,7 +208,8 @@ class CSRVCV4(nn.Module):
                                      use_gcn=use_gcn,
                                      gat_heads=gat_heads,
                                      num_classes=num_classes,
-                                     use_pytorch3d_normal=use_pytorch3d_normal)
+                                     use_pytorch3d_normal=use_pytorch3d_normal,
+                                     dropedge_prob=dropedge_prob)
         
     def set_data(self, x, V, f=None, reduced_DOF=False):
         assert x.shape[0] == 1
