@@ -305,7 +305,13 @@ def train_surf(config):
                         print(f"Labels range: {nearest_gt_labels.min()} to {nearest_gt_labels.max()}")
                         continue  # Skip this batch
                     
+                    
                     # Compute classification loss
+                    assert class_logits.shape[-1] == num_classes,f"{class_logits.shape}"
+                    assert class_logits.dim() == 2,f'{class_logits.dim()}'
+                    assert nearest_gt_labels.shape[0] == class_logits.shape[0],f'{nearest_gt_labels.shape}'
+                    assert nearest_gt_labels.dim() == 1,f'{nearest_gt_labels.dim()}'
+                            
                     classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
                     in_dist_avg_classification_loss.append(classification_loss.item())
                     classification_loss.backward()
@@ -330,10 +336,10 @@ def train_surf(config):
                     continue  # Skip this batch
 
                 # Compute classification loss
-                assert class_logits.shape[-1] == num_classes
-                assert class_logits.dim() == 2
-                assert labels.shape[0] == class_logits.shape[0]
-                assert labels.dim() == 1
+                assert class_logits.shape[-1] == num_classes,f'{class_logits.shape}'
+                assert class_logits.dim() == 2,f'{class_logits.dim()}'
+                assert labels.shape[0] == class_logits.shape[0],f'{labels.shape}'
+                assert labels.dim() == 1,f'{labels.dim()}'
                 classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
                 classification_loss.backward()
                 optimizer.step()
@@ -408,10 +414,10 @@ def train_surf(config):
                                 continue  # Skip this batch
                             
                             # Compute classification loss
-                            assert class_logits.shape[-1] == num_classes
-                            assert class_logits.dim() == 2
-                            assert nearest_gt_labels.shape[0] == class_logits.shape[0]
-                            assert nearest_gt_labels.dim() == 1
+                            assert class_logits.shape[-1] == num_classes,f"{class_logits.shape}"
+                            assert class_logits.dim() == 2,f'{class_logits.dim()}'
+                            assert nearest_gt_labels.shape[0] == class_logits.shape[0],f'{nearest_gt_labels.shape}'
+                            assert nearest_gt_labels.dim() == 1,f'{nearest_gt_labels.dim()}'
                             
                             classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
                             in_dist_classification_valid_error.append(classification_loss.item())
@@ -443,10 +449,10 @@ def train_surf(config):
                         
                         # Compute classification loss
                         
-                        assert class_logits.shape[-1] == num_classes
-                        assert class_logits.dim() == 2
-                        assert labels.shape[0] == class_logits.shape[0]
-                        assert labels.dim() == 1
+                        assert class_logits.shape[-1] == num_classes, f'{class_logits.shape}'
+                        assert class_logits.dim() == 2,f'{class_logits.dim()}'
+                        assert labels.shape[0] == class_logits.shape[0],f'{class_logits.shape}'
+                        assert labels.dim() == 1,f'{class_logits.dim()}'
                             
                         classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
                         classification_valid_error.append(classification_loss.item())
