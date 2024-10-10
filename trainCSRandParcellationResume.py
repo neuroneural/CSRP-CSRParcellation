@@ -21,13 +21,12 @@ import os
 import csv
 import torch.multiprocessing as mp
 
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # cKDTree import
+from sklearn.neighbors import KDTree  # KDTree import
 
 import torch.nn.functional as F
 
 import random
-
-from sklearn.neighbors import KDTree
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
     dice_scores = []
@@ -185,7 +184,6 @@ def train_surf(config):
     # --------------------------
     # Initialize the model
     if config.model_type == 'csrvc' and config.version == '2':
-        assert False, 'sanity check'
         cortexode = CSRVCV2(dim_h=C,
                             kernel_size=K,
                             n_scale=Q,
@@ -286,30 +284,30 @@ def train_surf(config):
                 optimizer.step()
                 avg_recon_loss.append(reconstruction_loss.item())
                 if compute_classification_loss:
-                    #in distribution approximate classification loss
-                    kdtree = KDTree(v_gt.detach().cpu().numpy())#v_gt is a torch tensor
-                    distances, indices = kdtree.query(v_out.detach().cpu().numpy(), k=1)#in the dataloader it's v_in (data/vc_dataloaderv3.py)
-                    nearest_gt_labels = torch.from_numpy(labels[indices.flatten()],device=device)
-                    cortexode.set_data(v_out, volume_in, f=f_gt)
+                    # In-distribution approximate classification loss
+                    v_out_np = v_out.detach().cpu().numpy()[0]
+                    v_gt_np = v_gt.detach().cpu().numpy()[0]
+                    labels_np = labels.detach().cpu().numpy()[0]
+                    kdtree = KDTree(v_gt_np)
+                    distances, indices = kdtree.query(v_out_np, k=1)
+                    indices = torch.from_numpy(indices.flatten()).long().to(device)
+                    nearest_gt_labels = torch.from_numpy(labels_np[indices.cpu().numpy()]).long().to(device)
+                    cortexode.set_data(v_out, volume_in, f=f_in)
                     # Perform forward pass to get class logits without ODE integration
                     _ = cortexode(None, v_out)
                     class_logits = cortexode.get_class_logits()
-                    class_logits = F.log_softmax(class_logits, dim=1)
-                    class_logits = class_logits.unsqueeze(0)
-                    class_logits = class_logits.permute(0, 2, 1)
+                    class_logits = class_logits.permute(1, 0)
                     
                     # Ensure labels are within valid range
                     if torch.any(nearest_gt_labels < 0) or torch.any(nearest_gt_labels >= num_classes):
-                        print(f"Invalid label detected in validation batch {idx} of epoch {epoch}")
+                        print(f"Invalid label detected in batch {idx} of epoch {epoch}")
                         print(f"Labels range: {nearest_gt_labels.min()} to {nearest_gt_labels.max()}")
                         continue  # Skip this batch
                     
                     # Compute classification loss
-                    classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
+                    classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), nearest_gt_labels.squeeze())
                     in_dist_avg_classification_loss.append(classification_loss.item())
-                    
-                
-
+    
             # Classification Loss
             if compute_classification_loss:
                 optimizer.zero_grad()
@@ -319,9 +317,8 @@ def train_surf(config):
                 _ = cortexode(None, v_gt)
 
                 class_logits = cortexode.get_class_logits()
-                class_logits = class_logits.unsqueeze(0)
-                class_logits = class_logits.permute(0, 2, 1)  # Reshape logits
-
+                class_logits = class_logits.permute(1, 0)  # Reshape logits
+                
                 # Ensure labels are within valid range
                 if torch.any(labels < 0) or torch.any(labels >= num_classes):
                     print(f"Invalid label detected in batch {idx} of epoch {epoch}")
@@ -329,7 +326,7 @@ def train_surf(config):
                     continue  # Skip this batch
 
                 # Compute classification loss
-                classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
+                classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), labels.squeeze())
                 classification_loss.backward()
                 optimizer.step()
                 avg_classification_loss.append(classification_loss.item())
@@ -376,23 +373,25 @@ def train_surf(config):
                         elif surf_type == 'gm':
                             mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
                             chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
-                            reconstruction_loss = mse_loss
+                            reconstruction_loss = mse_loss + chamfer_loss
 
                         recon_valid_loss = reconstruction_loss.item()
                         chamfer_valid_loss = chamfer_loss.item()
                         mse_valid_loss  = mse_loss.item()
                         if compute_classification_loss:
-                            #in distribution approximate classification loss
-                            kdtree = KDTree(v_gt)
-                            distances, indices = kdtree.query(v_out, k=1)#in the dataloader it's v_in (data/vc_dataloaderv3.py)
-                            nearest_gt_labels = labels[indices.flatten()]
-                            cortexode.set_data(v_out, volume_in, f=f_gt)
+                            # In-distribution approximate classification loss
+                            v_out_np = v_out.detach().cpu().numpy()[0]
+                            v_gt_np = v_gt.detach().cpu().numpy()[0]
+                            labels_np = labels.detach().cpu().numpy()[0]
+                            kdtree = KDTree(v_gt_np)
+                            distances, indices = kdtree.query(v_out_np, k=1)
+                            indices = torch.from_numpy(indices.flatten()).long().to(device)
+                            nearest_gt_labels = torch.from_numpy(labels_np[indices.cpu().numpy()]).long().to(device)
+                            cortexode.set_data(v_out, volume_in, f=f_in)
                             # Perform forward pass to get class logits without ODE integration
                             _ = cortexode(None, v_out)
                             class_logits = cortexode.get_class_logits()
-                            class_logits = F.log_softmax(class_logits, dim=1)
-                            class_logits = class_logits.unsqueeze(0)
-                            class_logits = class_logits.permute(0, 2, 1)
+                            class_logits = class_logits.permute(1, 0)
                             
                             # Ensure labels are within valid range
                             if torch.any(nearest_gt_labels < 0) or torch.any(nearest_gt_labels >= num_classes):
@@ -401,13 +400,16 @@ def train_surf(config):
                                 continue  # Skip this batch
                             
                             # Compute classification loss
-                            classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
+                            classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), nearest_gt_labels.squeeze())
                             in_dist_classification_valid_error.append(classification_loss.item())
+                            
+                            class_logits = class_logits.unsqueeze(0)
+                            class_logits = F.log_softmax(class_logits, dim=1)
                             
                             # Compute Dice score
                             predicted_classes = torch.argmax(class_logits, dim=1)
                             exclude_classes = [-1,4] if config.atlas in ['aparc', 'DKTatlas40'] else []
-                            in_dist_dice_score = compute_dice(predicted_classes, nearest_gt_labels, num_classes, exclude_classes)
+                            in_dist_dice_score = compute_dice(predicted_classes, nearest_gt_labels.unsqueeze(0), num_classes, exclude_classes)
                             in_dist_dice_valid_error.append(in_dist_dice_score)
                             
                     if compute_classification_loss:
@@ -418,9 +420,7 @@ def train_surf(config):
                         _ = cortexode(None, v_gt)
 
                         class_logits = cortexode.get_class_logits()
-                        class_logits = F.log_softmax(class_logits, dim=1)
-                        class_logits = class_logits.unsqueeze(0)
-                        class_logits = class_logits.permute(0, 2, 1)
+                        class_logits = class_logits.permute(1, 0)
                         
                         # Ensure labels are within valid range
                         if torch.any(labels < 0) or torch.any(labels >= num_classes):
@@ -429,10 +429,13 @@ def train_surf(config):
                             continue  # Skip this batch
                         
                         # Compute classification loss
-                        classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
+                        classification_loss = nn.CrossEntropyLoss()(class_logits.squeeze(), labels.squeeze())
                         classification_valid_error.append(classification_loss.item())
                         
                         # Compute Dice score
+                        class_logits = class_logits.unsqueeze(0)#assert now how 3 dim
+                        class_logits = F.log_softmax(class_logits, dim=1)
+                        
                         predicted_classes = torch.argmax(class_logits, dim=1)
                         exclude_classes = [-1,4] if config.atlas in ['aparc', 'DKTatlas40'] else []
                         dice_score = compute_dice(predicted_classes, labels, num_classes, exclude_classes)
@@ -466,7 +469,7 @@ def train_surf(config):
                     f"{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}.pt"
                 )
             else:
-                assert False, 'Update naming conventions for model file name'
+                raise ValueError('Update naming conventions for model file name')
 
             # Save only the model's state_dict
             torch.save(cortexode.state_dict(), os.path.join(model_dir, model_filename))
@@ -484,7 +487,7 @@ def train_surf(config):
             f"{config.gnn_layers}_sf{config.sf}_{n_epochs}epochs_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}_final.pt"
         )
     else:
-        assert False, 'Update naming conventions for model file name'
+        raise ValueError('Update naming conventions for model file name')
 
     # Save final model's state_dict
     torch.save(cortexode.state_dict(), os.path.join(model_dir, final_model_filename))
