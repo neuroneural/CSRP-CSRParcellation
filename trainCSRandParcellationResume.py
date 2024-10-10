@@ -261,7 +261,7 @@ def train_surf(config):
             v_gt = v_gt.to(device).float()
             f_in = f_in.to(device).long()
             f_gt = f_gt.to(device).long()
-            labels = labels.to(device).long()
+            labels = labels.squeeze().to(device).long()
 
             # Reconstruction Loss
             if compute_reconstruction_loss:
@@ -297,7 +297,7 @@ def train_surf(config):
                     # Perform forward pass to get class logits without ODE integration
                     _ = cortexode(None, v_out)
                     class_logits = cortexode.get_class_logits()
-                    class_logits = class_logits.permute(1, 0)
+                    # class_logits = class_logits.permute(1, 0)
                     
                     # Ensure labels are within valid range
                     if torch.any(nearest_gt_labels < 0) or torch.any(nearest_gt_labels >= num_classes):
@@ -327,7 +327,7 @@ def train_surf(config):
                 _ = cortexode(None, v_gt)
 
                 class_logits = cortexode.get_class_logits()
-                class_logits = class_logits.permute(1, 0)  # Reshape logits
+                # class_logits = class_logits.permute(1, 0)  # Reshape logits
                 
                 # Ensure labels are within valid range
                 if torch.any(labels < 0) or torch.any(labels >= num_classes):
@@ -369,7 +369,7 @@ def train_surf(config):
                     v_gt = v_gt.to(device).float()
                     f_in = f_in.to(device).long()
                     f_gt = f_gt.to(device).long()
-                    labels = labels.to(device).long()
+                    labels = labels.squeeze().to(device).long()
 
                     recon_valid_loss = 0
 
@@ -405,7 +405,7 @@ def train_surf(config):
                             # Perform forward pass to get class logits without ODE integration
                             _ = cortexode(None, v_out)
                             class_logits = cortexode.get_class_logits()
-                            class_logits = class_logits.permute(1, 0)
+                            # class_logits = class_logits.permute(1, 0)
                             
                             # Ensure labels are within valid range
                             if torch.any(nearest_gt_labels < 0) or torch.any(nearest_gt_labels >= num_classes):
@@ -439,7 +439,7 @@ def train_surf(config):
                         _ = cortexode(None, v_gt)
 
                         class_logits = cortexode.get_class_logits()
-                        class_logits = class_logits.permute(1, 0)
+                        # class_logits = class_logits.permute(1, 0)
                         
                         # Ensure labels are within valid range
                         if torch.any(labels < 0) or torch.any(labels >= num_classes):
