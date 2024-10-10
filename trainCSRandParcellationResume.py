@@ -29,8 +29,8 @@ import torch.nn.functional as F
 import random
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
-    print('pred.shape',pred.shape)
-    print('target.shape',pred.shape)
+    # print('pred.shape',pred.shape)
+    # print('target.shape',pred.shape)
     dice_scores = []
     pred = pred.cpu().numpy()
     target = target.cpu().numpy()
@@ -157,7 +157,7 @@ def train_surf(config):
     log_filename = os.path.join(
         model_dir,
         f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
-        f"{config.gnn_layers}_sf{config.sf}_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}"
+        f"{config.gnn_layers}_sf{config.sf}_{solver}_{recon_loss_str}_{class_loss_str}_de{config.dropedge_prob}_{rand_num}"
     )
 
     if config.gnn == 'gat':
@@ -275,6 +275,7 @@ def train_surf(config):
                 v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
 
                 # Compute reconstruction loss as before
+                mse_loss = None
                 if surf_type == 'wm':
                     chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
                     reconstruction_loss = chamfer_loss
@@ -283,11 +284,9 @@ def train_surf(config):
                     mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
                     reconstruction_loss = mse_loss + chamfer_loss
 
-                reconstruction_loss.backward()
-                optimizer.step()
                 avg_recon_loss.append(reconstruction_loss.item())
-                if compute_classification_loss and chamfer_loss < .04:
-                    optimizer.zero_grad()
+
+                if compute_classification_loss and chamfer_loss < .14:
                     # In-distribution approximate classification loss
                     v_out_np = v_out.detach().cpu().numpy()[0]
                     v_gt_np = v_gt.detach().cpu().numpy()[0]
@@ -317,8 +316,13 @@ def train_surf(config):
                             
                     classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
                     in_dist_avg_classification_loss.append(classification_loss.item())
-                    classification_loss.backward()
-                    optimizer.step()
+                    totalloss = classification_loss + reconstruction_loss
+                    totalloss.backward()
+                else:
+                    reconstruction_loss.backward()
+                    
+                optimizer.step()
+                
 
     
             # Classification Loss
@@ -381,11 +385,12 @@ def train_surf(config):
                         cortexode.set_data(v_in, volume_in, f=f_in)
 
                         # Integrate over time
-                        print('v_in.shape',v_in.shape)
-                        print('f_in.shape',f_in.shape)
+                        # print('v_in.shape',v_in.shape)
+                        # print('f_in.shape',f_in.shape)
                         v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
 
                         # Compute reconstruction loss
+                        mse_loss = None
                         if surf_type == 'wm':
                             chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
                             reconstruction_loss = chamfer_loss
@@ -396,7 +401,10 @@ def train_surf(config):
 
                         recon_valid_loss = reconstruction_loss.item()
                         chamfer_valid_loss = chamfer_loss.item()
-                        mse_valid_loss  = mse_loss.item()
+                        if mse_loss is not None:
+                            mse_valid_loss  = mse_loss.item()
+                        else:
+                            mse_valid_loss = None
                         if compute_classification_loss:
                             # In-distribution approximate classification loss
                             v_out_np = v_out.detach().cpu().numpy()[0]
@@ -427,14 +435,14 @@ def train_surf(config):
                             classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
                             in_dist_classification_valid_error.append(classification_loss.item())
                             
-                            print('class_logits.shape',class_logits.shape)
+                            # print('class_logits.shape',class_logits.shape)
                             class_logits = class_logits.unsqueeze(0)
                             class_logits = F.log_softmax(class_logits, dim=2)
-                            print('class_logits.shape',class_logits.shape)
+                            # print('class_logits.shape',class_logits.shape)
                             
                             # Compute Dice score
                             predicted_classes = torch.argmax(class_logits, dim=2)
-                            print('predicted_classes.shape',predicted_classes.shape)
+                            # print('predicted_classes.shape',predicted_classes.shape)
                             exclude_classes = [-1,4] if config.atlas in ['aparc', 'DKTatlas40'] else []
                             in_dist_dice_score = compute_dice(predicted_classes, nearest_gt_labels.unsqueeze(0), num_classes, exclude_classes)
                             in_dist_dice_valid_error.append(in_dist_dice_score)
@@ -477,11 +485,13 @@ def train_surf(config):
 
                     recon_valid_error.append(recon_valid_loss)
                     chamfer_valid_error.append(chamfer_valid_loss)
-                    mse_valid_error.append(mse_valid_loss)
+                    if mse_valid_loss is not None:
+                        mse_valid_error.append(mse_valid_loss)
 
                 logger.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
                 logger.info('epoch:{}, chamfer validation error:{}'.format(epoch, np.mean(chamfer_valid_error)))
-                logger.info('epoch:{}, mse validation error:{}'.format(epoch, np.mean(mse_valid_error)))
+                if mse_valid_loss is not None:
+                    logger.info('epoch:{}, mse validation error:{}'.format(epoch, np.mean(mse_valid_error)))
                 logger.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
                 logger.info('epoch:{}, in_dist_dice validation error:{}'.format(epoch, np.mean(in_dist_dice_valid_error)))
                 logger.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
@@ -494,12 +504,12 @@ def train_surf(config):
                 model_filename = (
                     f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
                     f"{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{epoch}epochs_{solver}_"
-                    f"{recon_loss_str}_{class_loss_str}_{rand_num}.pt"
+                    f"{recon_loss_str}_{class_loss_str}_de{config.dropedge_prob}_{rand_num}.pt"
                 )
             elif config.gnn == 'gcn':
                 model_filename = (
                     f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
-                    f"{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}.pt"
+                    f"{config.gnn_layers}_sf{config.sf}_{epoch}epochs_{solver}_{recon_loss_str}_{class_loss_str}_de{config.dropedge_prob}_{rand_num}.pt"
                 )
             else:
                 raise ValueError('Update naming conventions for model file name')
@@ -512,12 +522,12 @@ def train_surf(config):
         final_model_filename = (
             f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
             f"{config.gnn_layers}_sf{config.sf}_heads{config.gat_heads}_{n_epochs}epochs_{solver}_"
-            f"{recon_loss_str}_{class_loss_str}_{rand_num}_final.pt"
+            f"{recon_loss_str}_{class_loss_str}_de{config.dropedge_prob}_{rand_num}_final.pt"
         )
     elif config.gnn == 'gcn':
         final_model_filename = (
             f"model_{surf_type}_{data_name}_{surf_hemi}_{tag}_v{config.version}_csrvc_layers"
-            f"{config.gnn_layers}_sf{config.sf}_{n_epochs}epochs_{solver}_{recon_loss_str}_{class_loss_str}_{rand_num}_final.pt"
+            f"{config.gnn_layers}_sf{config.sf}_{n_epochs}epochs_{solver}_{recon_loss_str}_{class_loss_str}_de{config.dropedge_prob}_{rand_num}_final.pt"
         )
     else:
         raise ValueError('Update naming conventions for model file name')

@@ -24,7 +24,7 @@ singularity exec --nv \
 /data/users2/washbee/speedrun/:/speedrun,\
 /data/users2/washbee/CortexODE-CSRFusionNet:/cortexode \
     /data/users2/washbee/containers/csrf_sandbox/ \
-    /cortexode/singularity/isbi/csrvcv3/joint/wm/train_csrvc_rhwm.sh $SLURM_ARRAY_TASK_ID &
+    /cortexode/singularity/isbi/csrvcv4/joint/wm/train_csrvc_rhwm.sh $SLURM_ARRAY_TASK_ID &
 
 pid1=$!  # Store the process ID of the second process
 
