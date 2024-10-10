@@ -27,6 +27,8 @@ import torch.nn.functional as F
 
 import random
 
+from sklearn.neighbors import KDTree
+
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
     dice_scores = []
     pred = pred.cpu().numpy()
@@ -246,6 +248,9 @@ def train_surf(config):
     for epoch in tqdm(range(start_epoch, n_epochs + 1)):
         avg_recon_loss = []
         avg_classification_loss = []
+        in_dist_avg_classification_loss = []
+        cortexode.train()
+        
         for idx, data in enumerate(trainloader):
             # Unpack data
             volume_in, v_in, v_gt, f_in, f_gt, labels = data
@@ -273,12 +278,37 @@ def train_surf(config):
                     chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
                     reconstruction_loss = chamfer_loss
                 elif surf_type == 'gm':
+                    chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
                     mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
-                    reconstruction_loss = mse_loss
+                    reconstruction_loss = mse_loss + chamfer_loss
 
                 reconstruction_loss.backward()
                 optimizer.step()
                 avg_recon_loss.append(reconstruction_loss.item())
+                if compute_classification_loss:
+                    #in distribution approximate classification loss
+                    kdtree = KDTree(v_gt.detach().cpu().numpy())#v_gt is a torch tensor
+                    distances, indices = kdtree.query(v_out.detach().cpu().numpy(), k=1)#in the dataloader it's v_in (data/vc_dataloaderv3.py)
+                    nearest_gt_labels = torch.from_numpy(labels[indices.flatten()],device=device)
+                    cortexode.set_data(v_out, volume_in, f=f_gt)
+                    # Perform forward pass to get class logits without ODE integration
+                    _ = cortexode(None, v_out)
+                    class_logits = cortexode.get_class_logits()
+                    class_logits = F.log_softmax(class_logits, dim=1)
+                    class_logits = class_logits.unsqueeze(0)
+                    class_logits = class_logits.permute(0, 2, 1)
+                    
+                    # Ensure labels are within valid range
+                    if torch.any(nearest_gt_labels < 0) or torch.any(nearest_gt_labels >= num_classes):
+                        print(f"Invalid label detected in validation batch {idx} of epoch {epoch}")
+                        print(f"Labels range: {nearest_gt_labels.min()} to {nearest_gt_labels.max()}")
+                        continue  # Skip this batch
+                    
+                    # Compute classification loss
+                    classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
+                    in_dist_avg_classification_loss.append(classification_loss.item())
+                    
+                
 
             # Classification Loss
             if compute_classification_loss:
@@ -306,15 +336,18 @@ def train_surf(config):
 
         logger.info('epoch:{}, recon loss:{}'.format(epoch, np.mean(avg_recon_loss)))
         logger.info('epoch:{}, classification loss:{}'.format(epoch, np.mean(avg_classification_loss)))
+        logger.info('epoch:{}, in_dist_classification loss:{}'.format(epoch, np.mean(in_dist_avg_classification_loss)))
 
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
             logger.info('-------------validation--------------')
             with torch.no_grad():
-
+                cortexode.eval()
                 recon_valid_error = []
                 chamfer_valid_error = []
                 mse_valid_error = []
                 dice_valid_error = []
+                in_dist_dice_valid_error = []
+                in_dist_classification_valid_error = []
                 classification_valid_error = []
                 for idx, data in enumerate(validloader):
                     volume_in, v_in, v_gt, f_in, f_gt, labels = data
@@ -348,6 +381,35 @@ def train_surf(config):
                         recon_valid_loss = reconstruction_loss.item()
                         chamfer_valid_loss = chamfer_loss.item()
                         mse_valid_loss  = mse_loss.item()
+                        if compute_classification_loss:
+                            #in distribution approximate classification loss
+                            kdtree = KDTree(v_gt)
+                            distances, indices = kdtree.query(v_out, k=1)#in the dataloader it's v_in (data/vc_dataloaderv3.py)
+                            nearest_gt_labels = labels[indices.flatten()]
+                            cortexode.set_data(v_out, volume_in, f=f_gt)
+                            # Perform forward pass to get class logits without ODE integration
+                            _ = cortexode(None, v_out)
+                            class_logits = cortexode.get_class_logits()
+                            class_logits = F.log_softmax(class_logits, dim=1)
+                            class_logits = class_logits.unsqueeze(0)
+                            class_logits = class_logits.permute(0, 2, 1)
+                            
+                            # Ensure labels are within valid range
+                            if torch.any(nearest_gt_labels < 0) or torch.any(nearest_gt_labels >= num_classes):
+                                print(f"Invalid label detected in validation batch {idx} of epoch {epoch}")
+                                print(f"Labels range: {nearest_gt_labels.min()} to {nearest_gt_labels.max()}")
+                                continue  # Skip this batch
+                            
+                            # Compute classification loss
+                            classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
+                            in_dist_classification_valid_error.append(classification_loss.item())
+                            
+                            # Compute Dice score
+                            predicted_classes = torch.argmax(class_logits, dim=1)
+                            exclude_classes = [-1,4] if config.atlas in ['aparc', 'DKTatlas40'] else []
+                            in_dist_dice_score = compute_dice(predicted_classes, nearest_gt_labels, num_classes, exclude_classes)
+                            in_dist_dice_valid_error.append(in_dist_dice_score)
+                            
                     if compute_classification_loss:
                         # Set data for classification
                         cortexode.set_data(v_gt, volume_in, f=f_gt)
@@ -372,9 +434,10 @@ def train_surf(config):
                         
                         # Compute Dice score
                         predicted_classes = torch.argmax(class_logits, dim=1)
-                        exclude_classes = [4] if config.atlas in ['aparc', 'DKTatlas40'] else []
+                        exclude_classes = [-1,4] if config.atlas in ['aparc', 'DKTatlas40'] else []
                         dice_score = compute_dice(predicted_classes, labels, num_classes, exclude_classes)
                         dice_valid_error.append(dice_score)
+                         
 
                     recon_valid_error.append(recon_valid_loss)
                     chamfer_valid_error.append(chamfer_valid_loss)
@@ -384,7 +447,9 @@ def train_surf(config):
                 logger.info('epoch:{}, chamfer validation error:{}'.format(epoch, np.mean(chamfer_valid_error)))
                 logger.info('epoch:{}, mse validation error:{}'.format(epoch, np.mean(mse_valid_error)))
                 logger.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
+                logger.info('epoch:{}, in_dist_dice validation error:{}'.format(epoch, np.mean(in_dist_dice_valid_error)))
                 logger.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
+                logger.info('epoch:{}, in_dist_classification validation error:{}'.format(epoch, np.mean(in_dist_classification_valid_error)))
                 logger.info('-------------------------------------')
 
         if epoch == start_epoch or epoch == n_epochs or epoch % 10 == 0:
