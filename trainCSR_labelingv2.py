@@ -69,7 +69,7 @@ def save_mesh_with_annotations(mesh, labels, save_path, color_map, data_name='hc
 
     vertex_element = PlyElement.describe(vertices, 'vertex')
     face_element = PlyElement.describe(faces, 'face')
-
+    
     PlyData([vertex_element, face_element], text=True).write(save_path)#replace with freeview compatible stl file and annotation file.
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):

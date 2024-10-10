@@ -29,6 +29,8 @@ import torch.nn.functional as F
 import random
 
 def compute_dice(pred, target, num_classes, exclude_classes=[]):
+    print('pred.shape',pred.shape)
+    print('target.shape',pred.shape)
     dice_scores = []
     pred = pred.cpu().numpy()
     target = target.cpu().numpy()
@@ -261,7 +263,7 @@ def train_surf(config):
             v_gt = v_gt.to(device).float()
             f_in = f_in.to(device).long()
             f_gt = f_gt.to(device).long()
-            labels = labels.squeeze().to(device).long()
+            labels = labels.squeeze(0).to(device).long()
 
             # Reconstruction Loss
             if compute_reconstruction_loss:
@@ -288,7 +290,7 @@ def train_surf(config):
                     # In-distribution approximate classification loss
                     v_out_np = v_out.detach().cpu().numpy()[0]
                     v_gt_np = v_gt.detach().cpu().numpy()[0]
-                    labels_np = labels.detach().cpu().numpy()[0]
+                    labels_np = labels.detach().cpu().numpy()
                     kdtree = KDTree(v_gt_np)
                     distances, indices = kdtree.query(v_out_np, k=1)
                     indices = torch.from_numpy(indices.flatten()).long().to(device)
@@ -369,7 +371,7 @@ def train_surf(config):
                     v_gt = v_gt.to(device).float()
                     f_in = f_in.to(device).long()
                     f_gt = f_gt.to(device).long()
-                    labels = labels.squeeze().to(device).long()
+                    labels = labels.squeeze(0).to(device).long()
 
                     recon_valid_loss = 0
 
@@ -378,6 +380,8 @@ def train_surf(config):
                         cortexode.set_data(v_in, volume_in, f=f_in)
 
                         # Integrate over time
+                        print('v_in.shape',v_in.shape)
+                        print('f_in.shape',f_in.shape)
                         v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
 
                         # Compute reconstruction loss
@@ -396,7 +400,7 @@ def train_surf(config):
                             # In-distribution approximate classification loss
                             v_out_np = v_out.detach().cpu().numpy()[0]
                             v_gt_np = v_gt.detach().cpu().numpy()[0]
-                            labels_np = labels.detach().cpu().numpy()[0]
+                            labels_np = labels.detach().cpu().numpy()
                             kdtree = KDTree(v_gt_np)
                             distances, indices = kdtree.query(v_out_np, k=1)
                             indices = torch.from_numpy(indices.flatten()).long().to(device)
@@ -422,11 +426,14 @@ def train_surf(config):
                             classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_gt_labels)
                             in_dist_classification_valid_error.append(classification_loss.item())
                             
+                            print('class_logits.shape',class_logits.shape)
                             class_logits = class_logits.unsqueeze(0)
-                            class_logits = F.log_softmax(class_logits, dim=1)
+                            class_logits = F.log_softmax(class_logits, dim=2)
+                            print('class_logits.shape',class_logits.shape)
                             
                             # Compute Dice score
-                            predicted_classes = torch.argmax(class_logits, dim=1)
+                            predicted_classes = torch.argmax(class_logits, dim=2)
+                            print('predicted_classes.shape',predicted_classes.shape)
                             exclude_classes = [-1,4] if config.atlas in ['aparc', 'DKTatlas40'] else []
                             in_dist_dice_score = compute_dice(predicted_classes, nearest_gt_labels.unsqueeze(0), num_classes, exclude_classes)
                             in_dist_dice_valid_error.append(in_dist_dice_score)
@@ -459,9 +466,9 @@ def train_surf(config):
                         
                         # Compute Dice score
                         class_logits = class_logits.unsqueeze(0)#assert now how 3 dim
-                        class_logits = F.log_softmax(class_logits, dim=1)
+                        class_logits = F.log_softmax(class_logits, dim=2)
                         
-                        predicted_classes = torch.argmax(class_logits, dim=1)
+                        predicted_classes = torch.argmax(class_logits, dim=2)
                         exclude_classes = [-1,4] if config.atlas in ['aparc', 'DKTatlas40'] else []
                         dice_score = compute_dice(predicted_classes, labels, num_classes, exclude_classes)
                         dice_valid_error.append(dice_score)
