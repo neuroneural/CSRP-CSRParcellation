@@ -25,7 +25,8 @@ subj_id=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $SUBJ_FILE)
 echo $subj_id
 # Define Paths
 csv_file_path="../csvs/csrp_measures.csv"
-framework_name="csrp"
+#framework_name="csrp"
+framework_name="cortexode"
 
 # Updated paths where both predictions and ground truths are stored
 # Assuming that the ground truths are now within the same directories as predictions
@@ -49,5 +50,6 @@ echo framework_name $framework_name
 echo gt_subject_base_path $gt_subject_base_path 
 echo proj_subject_base_path $proj_subject_base_path
 python ../../../analyze_subject_csrp.py --subj_id=$subj_id --csv_file_path=$csv_file_path --framework_name=$framework_name --subject_base_path=$proj_subject_base_path --gt_base_path=$gt_subject_base_path
+
 
 

@@ -8,6 +8,7 @@ from tqdm import tqdm
 from data.csrandvcdataloader import BrainDataset
 from model.csrvcv2 import CSRVCV2  # Updated import
 from model.csrvcv3 import CSRVCV3  # Updated import
+from model.csrvcv4 import CSRVCV4  # Updated import
 from model.csrvcSplitGnn import CSRVCSPLITGNN  # Updated import
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.structures import Meshes
@@ -201,16 +202,14 @@ def train_surf(config):
                             gat_heads=config.gat_heads,
                             num_classes=num_classes).to(device)
     elif config.model_type == "csrvc" and config.version == '4':
-        assert False, 'sanity check'
-
-        cortexode = CSRVCSPLITGNN(dim_h=C,
-                                  kernel_size=K,
-                                  n_scale=Q,
-                                  sf=config.sf,
-                                  gnn_layers=config.gnn_layers,
-                                  use_gcn=use_gcn,
-                                  gat_heads=config.gat_heads,
-                                  num_classes=num_classes).to(device)
+        cortexode = CSRVCV4(dim_h=C,
+                            kernel_size=K,
+                            n_scale=Q,
+                            sf=config.sf,
+                            gnn_layers=config.gnn_layers,
+                            use_gcn=use_gcn,
+                            gat_heads=config.gat_heads,
+                            num_classes=num_classes).to(device)
     else:
         raise ValueError("Unsupported model type or version.")
 
@@ -313,6 +312,8 @@ def train_surf(config):
             with torch.no_grad():
 
                 recon_valid_error = []
+                chamfer_valid_error = []
+                mse_valid_error = []
                 dice_valid_error = []
                 classification_valid_error = []
                 for idx, data in enumerate(validloader):
@@ -341,10 +342,12 @@ def train_surf(config):
                             reconstruction_loss = chamfer_loss
                         elif surf_type == 'gm':
                             mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
+                            chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
                             reconstruction_loss = mse_loss
 
                         recon_valid_loss = reconstruction_loss.item()
-
+                        chamfer_valid_loss = chamfer_loss.item()
+                        mse_valid_loss  = mse_loss.item()
                     if compute_classification_loss:
                         # Set data for classification
                         cortexode.set_data(v_gt, volume_in, f=f_gt)
@@ -356,17 +359,17 @@ def train_surf(config):
                         class_logits = F.log_softmax(class_logits, dim=1)
                         class_logits = class_logits.unsqueeze(0)
                         class_logits = class_logits.permute(0, 2, 1)
-
+                        
                         # Ensure labels are within valid range
                         if torch.any(labels < 0) or torch.any(labels >= num_classes):
                             print(f"Invalid label detected in validation batch {idx} of epoch {epoch}")
                             print(f"Labels range: {labels.min()} to {labels.max()}")
                             continue  # Skip this batch
-
+                        
                         # Compute classification loss
                         classification_loss = nn.CrossEntropyLoss()(class_logits, labels)
                         classification_valid_error.append(classification_loss.item())
-
+                        
                         # Compute Dice score
                         predicted_classes = torch.argmax(class_logits, dim=1)
                         exclude_classes = [4] if config.atlas in ['aparc', 'DKTatlas40'] else []
@@ -374,8 +377,12 @@ def train_surf(config):
                         dice_valid_error.append(dice_score)
 
                     recon_valid_error.append(recon_valid_loss)
+                    chamfer_valid_error.append(chamfer_valid_loss)
+                    mse_valid_error.append(mse_valid_loss)
 
                 logger.info('epoch:{}, reconstruction validation error:{}'.format(epoch, np.mean(recon_valid_error)))
+                logger.info('epoch:{}, chamfer validation error:{}'.format(epoch, np.mean(chamfer_valid_error)))
+                logger.info('epoch:{}, mse validation error:{}'.format(epoch, np.mean(mse_valid_error)))
                 logger.info('epoch:{}, dice validation error:{}'.format(epoch, np.mean(dice_valid_error)))
                 logger.info('epoch:{}, classification validation error:{}'.format(epoch, np.mean(classification_valid_error)))
                 logger.info('-------------------------------------')

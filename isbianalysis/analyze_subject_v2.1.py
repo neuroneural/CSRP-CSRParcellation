@@ -6,11 +6,9 @@ from scipy.spatial import cKDTree
 import argparse
 import re
 import pyvista as pv
-from scipy.spatial import cKDTree
 import sys
 from multiprocessing import Lock
 
-# Function to compute Chamfer Distance using KD-Tree
 def compute_chamfer_distance(mesh1, mesh2):
     try:
         points1 = mesh1['vertices']
@@ -25,7 +23,6 @@ def compute_chamfer_distance(mesh1, mesh2):
         print(f"Error computing Chamfer Distance: {e}")
         return np.nan
 
-# Function to compute Hausdorff Distance using KD-Tree
 def compute_hausdorff_distance(mesh1, mesh2):
     try:
         points1 = mesh1['vertices']
@@ -40,18 +37,20 @@ def compute_hausdorff_distance(mesh1, mesh2):
         print(f"Error computing Hausdorff Distance: {e}")
         return np.nan
 
-# Function to load Freesurfer surface files
-def load_freesurfer_surface(surface_path):
+def load_freesurfer_surface_and_labels(surface_path):
     try:
         coords, faces = nib.freesurfer.read_geometry(surface_path)
         faces = faces.astype(np.int64)  # Ensure faces are of type int64
         mesh = {'vertices': coords, 'faces': faces}
-        return mesh
+
+        # Load the annotation file with the same basename but .annot extension
+        annot_path = os.path.splitext(surface_path)[0] + '.annot'
+        labels, ctab, names = nib.freesurfer.read_annot(annot_path)
+        return mesh, labels
     except Exception as e:
-        print(f"Error loading surface file {surface_path}: {e}")
+        print(f"Error loading surface or annotation file {surface_path}: {e}")
         raise
 
-# Function to detect self-intersections using PyVista
 def triangles_intersect(triangle1, vertices, faces):
     face = np.array([3, 0, 1, 2])
     faces_pv = np.hstack((np.full((faces.shape[0], 1), 3), faces)).astype(np.int64)
@@ -70,7 +69,6 @@ def mesh2tricenters(mesh, triangles=None):
     return centers
 
 def detachedtriangles(mesh, triangle_id, other_ids):
-    # Exclude triangles that share vertices with the current triangle
     mask = np.any(np.isin(mesh['faces'][other_ids], mesh['faces'][triangle_id]), axis=1)
     faces = mesh['faces'][other_ids][~mask]
     return faces
@@ -94,7 +92,6 @@ def count_self_collisions(mesh, k=5):
 
     return collision_count
 
-# Function to write results to CSV
 def write_to_csv(file_path, lock, data):
     file_exists = os.path.isfile(file_path)
     assert lock is not None, "Error: lock is None"
@@ -108,7 +105,6 @@ def write_to_csv(file_path, lock, data):
     except Exception as e:
         print(f"Error writing to CSV {file_path}: {e}")
 
-# Function to extract subject ID from filename
 def extract_subject_id(filename):
     match = re.search(r'hcp_[lr]h_(\d{6})_', filename)
     if match:
@@ -116,7 +112,27 @@ def extract_subject_id(filename):
     else:
         return None
 
-# Process a subject and compute metrics
+def calculate_dice_score(labels1, labels2):
+    dice_scores = {}
+    unique_labels = np.unique(np.concatenate((labels1, labels2)))
+    
+    for label in unique_labels:
+        mask1 = labels1 == label
+        mask2 = labels2 == label
+        intersection = np.sum(mask1 & mask2)
+        size1 = np.sum(mask1)
+        size2 = np.sum(mask2)
+        dice_score = (2 * intersection) / (size1 + size2) if (size1 + size2) > 0 else np.nan
+        dice_scores[label] = dice_score
+    
+    return dice_scores
+
+def map_labels(labels_source, vertices_source, vertices_target):
+    tree = cKDTree(vertices_source)
+    distances, indices = tree.query(vertices_target, k=1)
+    mapped_labels = labels_source[indices]
+    return mapped_labels
+
 def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_path, gt_base_path, output_dir):
     print(f'Processing Subject: {subj_id}')
     hemispheres = ['lh', 'rh']
@@ -127,28 +143,22 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
         for surf_type in surf_types:
             print(f'Surface Type: {surf_type}')
         
-            # Define paths for predictions and ground truths
             pred_surf_dir = os.path.join(subject_base_path, surf_type, hemi)
             gt_surf_dir = os.path.join(gt_base_path, f"{surf_type}_gt", hemi)
 
-            # Ensure prediction directory exists
             if not os.path.isdir(pred_surf_dir):
                 print(f"Prediction directory does not exist: {pred_surf_dir}. Skipping.")
                 continue
 
-            # Ensure ground truth directory exists
             if not os.path.isdir(gt_surf_dir):
                 print(f"Ground truth directory does not exist: {gt_surf_dir}. Skipping.")
                 continue
 
-            # List all prediction .surf files
             pred_files = [f for f in os.listdir(pred_surf_dir) if f.endswith('.surf') and (subj_id in f)]
             print(f'Prediction Files: {pred_files}')
             for pred_file in pred_files:
-                # Extract GNN layers and epoch from the prediction filename
                 print(f'Processing File: {pred_file}')
                 if surf_type == 'gm':
-                    # Updated pattern without epoch
                     pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_gm_pred(?:_epoch(\d+))?\.surf'
                 else:
                     pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_wm_pred(?:_epoch(\d+))?\.surf'
@@ -159,58 +169,58 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_p
                 gnn_layers = match.group(2)
                 epoch = match.group(3) if match.group(3) is not None else None
 
-                # Set epoch to 90 if it's missing and framework is 'cortexode'
                 if epoch is None:
                     if framework_name == 'cortexode':
                         epoch = '90'
                     else:
-                        # If epoch is missing and framework is not 'cortexode', you can decide how to handle this
                         epoch = 'unknown'
 
-                # Construct full paths for predicted and ground truth surfaces
                 pred_surf_path = os.path.join(pred_surf_dir, pred_file)
                 print(f'Prediction Surface Path: {pred_surf_path}')
                 gt_file = f"hcp_{hemi}_{subj_id}_{surf_type}_gt.surf"
                 gt_surf_path = os.path.join(gt_surf_dir, gt_file)
                 print(f'Ground Truth Surface Path: {gt_surf_path}')
-                # Check if ground truth file exists
                 if not os.path.exists(gt_surf_path):
                     print(f"Ground truth file does not exist: {gt_surf_path}. Skipping.")
                     continue
 
-                # Load meshes
                 try:
-                    pred_mesh = load_freesurfer_surface(pred_surf_path)
-                    gt_mesh = load_freesurfer_surface(gt_surf_path)
+                    pred_mesh, pred_labels = load_freesurfer_surface_and_labels(pred_surf_path)
+                    gt_mesh, gt_labels = load_freesurfer_surface_and_labels(gt_surf_path)
                 except Exception as e:
-                    print(f"Error loading meshes for {subj_id}, {hemi}, {surf_type}: {e}")
+                    print(f"Error loading meshes or labels for {subj_id}, {hemi}, {surf_type}: {e}")
                     continue
 
-                # Compute Chamfer and Hausdorff distances
-                chamfer_dist = compute_chamfer_distance(pred_mesh, gt_mesh)
-                hausdorff_dist = compute_hausdorff_distance(pred_mesh, gt_mesh)
+                # chamfer_dist = compute_chamfer_distance(pred_mesh, gt_mesh)
+                # hausdorff_dist = compute_hausdorff_distance(pred_mesh, gt_mesh)
 
-                # Compute self-intersections for the predicted mesh
-                self_collision_count = count_self_collisions(pred_mesh, k=30)
-                total_triangles = len(pred_mesh['faces'])
+                # Map labels if necessary
+                if pred_mesh['vertices'].shape[0] != gt_mesh['vertices'].shape[0]:
+                    pred_labels = map_labels(pred_labels, pred_mesh['vertices'], gt_mesh['vertices'])
 
-                # Prepare data rows
-                data_chamfer = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Chamfer Distance', '', chamfer_dist, '']
-                data_hausdorff = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Hausdorff Distance', '', hausdorff_dist, '']
-                data_self_intersect = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles]
+                dice_scores = calculate_dice_score(gt_labels, pred_labels)
 
-                # Write results to CSV
-                write_to_csv(csv_file_path, lock, data_chamfer)
-                write_to_csv(csv_file_path, lock, data_hausdorff)
-                write_to_csv(csv_file_path, lock, data_self_intersect)
+                # self_collision_count = count_self_collisions(pred_mesh, k=30)
+                # total_triangles = len(pred_mesh['faces'])
+
+                # data_chamfer = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Chamfer Distance', '', chamfer_dist, '']
+                # data_hausdorff = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Hausdorff Distance', '', hausdorff_dist, '']
+                # data_self_intersect = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles]
+
+                # write_to_csv(csv_file_path, lock, data_chamfer)
+                # write_to_csv(csv_file_path, lock, data_hausdorff)
+                # write_to_csv(csv_file_path, lock, data_self_intersect)
+
+                # Write Dice scores for each label
+                for label, score in dice_scores.items():
+                    data_dice = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Dice', label, score, '']
+                    write_to_csv(csv_file_path, lock, data_dice)
 
 if __name__ == "__main__":
-    # Use argparse for command-line argument parsing
     import argparse
 
     parser = argparse.ArgumentParser(description="Process subject arguments")
 
-    # Define the command-line arguments
     parser.add_argument('--subj_id', type=str, required=True, help='Subject identifier (e.g., 201818)')
     parser.add_argument('--csv_file_path', type=str, required=True, help='Path to the CSV file where results will be appended')
     parser.add_argument('--framework_name', type=str, required=True, help='Name of the framework/model (e.g., csrp)')
@@ -224,7 +234,7 @@ if __name__ == "__main__":
     framework_name = args.framework_name.strip()
     subject_base_path = args.subject_base_path.strip()
     gt_base_path = args.gt_base_path.strip()
-    output_dir = '../result/'  # Retained for consistency
+    output_dir = 'result/'
 
     print(f'Subject ID: {subj_id}')
     print(f'CSV File Path: {csv_file_path}')
@@ -233,6 +243,5 @@ if __name__ == "__main__":
     print(f'Ground Truth Base Path: {gt_base_path}')
     print(f'Output Directory: {output_dir}')
 
-    # Initialize a lock for parallel-safe writing
     lock = Lock()
     process_subject(subj_id, csv_file_path, lock, framework_name, subject_base_path, gt_base_path, output_dir)

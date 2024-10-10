@@ -1,0 +1,21 @@
+Subject ID,Framework,surf_type,GNNLayers,Metric,Score,CSV_File
+293748.0,csrp,wm,8.0,Dice,0.66863972990851,csrp_dice-100-100-100a.csv
+297655.0,csrp,wm,8.0,Dice,0.6679597769650466,csrp_dice-100-100-100a.csv
+268850.0,csrp,wm,8.0,Dice,0.665763503696124,csrp_dice-100-100-100a.csv
+205220.0,csrp,wm,8.0,Dice,0.66058049114458,csrp_dice-100-100-100a.csv
+210011.0,csrp,wm,8.0,Dice,0.660190015842021,csrp_dice-100-100-100a.csv
+246133.0,csrp,wm,8.0,Dice,0.7182071044461237,csrp_dice-400-100-100a.csv
+200008.0,csrp,wm,8.0,Dice,0.717974236942885,csrp_dice-400-100-100a.csv
+221218.0,csrp,wm,8.0,Dice,0.7171646084224926,csrp_dice-400-100-100a.csv
+203418.0,csrp,wm,8.0,Dice,0.7158355080089296,csrp_dice-400-100-100a.csv
+268850.0,csrp,wm,8.0,Dice,0.7156807878626612,csrp_dice-400-100-100a.csv
+210011.0,csrp,wm,8.0,Dice,0.7443883424597943,csrp_dice-400-100-100b.csv
+237334.0,csrp,wm,8.0,Dice,0.744350046051766,csrp_dice-400-100-100b.csv
+250932.0,csrp,wm,8.0,Dice,0.7418980238240712,csrp_dice-400-100-100b.csv
+245333.0,csrp,wm,8.0,Dice,0.7408326254608547,csrp_dice-400-100-100b.csv
+208125.0,csrp,wm,8.0,Dice,0.7406708955802412,csrp_dice-400-100-100b.csv
+211215.0,FastSurfer,white,0.0,Dice,0.9339502970024854,fastsurfer_dice.csv
+205725.0,FastSurfer,white,0.0,Dice,0.9338416810452256,fastsurfer_dice.csv
+209228.0,FastSurfer,white,0.0,Dice,0.9331264696838012,fastsurfer_dice.csv
+208024.0,FastSurfer,white,0.0,Dice,0.9325900760601399,fastsurfer_dice.csv
+212116.0,FastSurfer,white,0.0,Dice,0.9322004086233868,fastsurfer_dice.csv
