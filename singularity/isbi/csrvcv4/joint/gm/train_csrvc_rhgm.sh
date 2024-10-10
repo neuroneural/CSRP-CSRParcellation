@@ -77,7 +77,7 @@ python trainCSRandParcellationResume.py \
     --train_type 'surfandseg' \
     --compute_reconstruction_loss 'yes' \
     --compute_classification_loss 'yes' \
-    --data_dir '/speedrun/isbi-data-dev/' \
+    --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/init/' \
     --data_name 'hcp' \
