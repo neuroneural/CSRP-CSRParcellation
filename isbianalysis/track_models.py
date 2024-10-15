@@ -1,33 +1,45 @@
-# python track_models.py \
-#     --max_epoch_norecon_class 50 \
-#     --max_epoch_recon_noclass 60 \
-#     --max_epoch_recon_class 70 \
-#     --log_dir /data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model \
-#     --model_dir /data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model \
-#     --output_csv validation_metrics.csv
-
 import os
 import re
 import pandas as pd
 import argparse
+import logging
 
-# Define the path to your log files and model files
-# These will be overridden by command-line arguments
-default_log_dir = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model'
-default_model_dir = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model'  # Assuming models are in the same directory
+# Configure logging
+logging.basicConfig(
+    filename='track_models.log',
+    filemode='a',
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
-# Define the output CSV file name
+# Define the default paths (these can be overridden by command-line arguments)
+default_log_dir = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model'
+default_model_dir = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model'
 default_output_csv = 'validation_metrics.csv'
 
 # Define possible modes and their applicable metrics
 modes_metrics = {
-    '_norecon_class': ['max_epochs', 'max_validation_dice', 'max_validation_dice_epoch',
-                       'max_validation_dice_epoch_filename', 'best_model_filename'],
-    '_recon_noclass': ['max_epochs', 'min_recon_error', 'min_recon_error_epoch',
-                       'min_recon_error_filename', 'best_model_filename'],
-    '_recon_class': ['max_epochs', 'max_validation_dice', 'max_validation_dice_epoch',
-                     'max_validation_dice_epoch_filename', 'min_recon_error', 'min_recon_error_epoch',
-                     'min_recon_error_filename', 'best_model_filename']
+    '_norecon_class': [
+        'max_epochs',
+        'chamfer validation error',
+        'chamfer validation error_epoch',
+        'chamfer validation error_epoch_filename',
+        'best_model_filename'
+    ],
+    '_recon_noclass': [
+        'max_epochs',
+        'chamfer validation error',
+        'chamfer validation error_epoch',
+        'chamfer validation error_epoch_filename',
+        'best_model_filename'
+    ],
+    '_recon_class': [
+        'max_epochs',
+        'in_dist_dice validation error',
+        'in_dist_dice validation error_epoch',
+        'in_dist_dice validation error_epoch_filename',
+        'best_model_filename'
+    ]
 }
 
 # Create MultiIndex for columns
@@ -43,30 +55,39 @@ for mode, metrics in modes_metrics.items():
 # Create MultiIndex
 index = pd.MultiIndex.from_tuples(tuples, names=['Metric', 'Mode'])
 
-# Function to parse model filenames
 def parse_model_filenames(model_files):
     """
     Parses model filenames and returns a dictionary mapping from (random_number, epoch) to model filename.
     """
     model_dict = {}
+    # Regex to match the model filename pattern
+    pattern = r'^model_(wm|gm)_hcp_(lh|rh)_vc_v4_csrvc_layers(\d+)_sf0\.1_heads\d+_' \
+              r'(\d+)epochs_euler_(norecon_class|recon_noclass|recon_class)_de0\.1_' \
+              r'(\d{6})(?:_final)?\.pt$'
     for filename in model_files:
-        pattern = r'^model_.*?_(\d+)epochs_.*?_(\d{6})\.pt$'
         match = re.match(pattern, filename)
         if match:
-            epoch = int(match.group(1))
-            random_number = match.group(2)
-            key = (random_number, epoch)
+            surf_type = match.group(1)
+            surf_hemi = match.group(2)
+            gat_layers = int(match.group(3))
+            epochs = int(match.group(4))  # Ensure epoch is int
+            mode = '_' + match.group(5)
+            random_number = match.group(6)
+            key = (random_number, epochs)
             model_dict[key] = filename
+            logging.info(f"Parsed model file '{filename}': surf_type={surf_type}, surf_hemi={surf_hemi}, "
+                         f"gat_layers={gat_layers}, epochs={epochs}, mode={mode}, random_number={random_number}")
+        else:
+            logging.warning(f"Failed to parse model filename: {filename}")
     return model_dict
 
-# Function to parse log filenames
 def parse_log_filename(filename):
     """
     Parses the log filename to extract parameters.
-    Example filename:
-    model_gm_hcp_lh_vc_v3_csrvc_layers12_sf0.1_heads1.log
     """
-    pattern = r'^model_(wm|gm)_hcp_(lh|rh)_.*?_layers(\d+).*?_(norecon_class|recon_noclass|recon_class)_(\d{6})_heads\d+\.log$'
+    pattern = r'^model_(wm|gm)_hcp_(lh|rh)_vc_v4_csrvc_layers(\d+)_sf0\.1_euler_' \
+              r'(norecon_class|recon_noclass|recon_class)_de0\.1_' \
+              r'(\d{6})_heads\d+\.log$'
     match = re.match(pattern, filename)
     if match:
         surf_type = match.group(1)
@@ -74,11 +95,13 @@ def parse_log_filename(filename):
         gat_layers = int(match.group(3))
         mode = '_' + match.group(4)
         random_number = match.group(5)
+        logging.info(f"Parsed log file '{filename}': surf_type={surf_type}, surf_hemi={surf_hemi}, "
+                     f"gat_layers={gat_layers}, mode={mode}, random_number={random_number}")
         return surf_type, surf_hemi, gat_layers, mode, random_number
     else:
+        logging.warning(f"Failed to parse log filename: {filename}")
         return None
 
-# Function to parse log contents
 def parse_log_file(filepath, mode, max_epoch):
     """
     Parses the log file to extract validation metrics up to max_epoch.
@@ -87,95 +110,145 @@ def parse_log_file(filepath, mode, max_epoch):
     metrics_extracted = {}
     data_found = False  # Flag to check if any data was found
 
-    max_dice = -float('inf')
-    max_dice_epoch = None
+    # Initialize variables based on mode
+    if '_class' in mode:
+        # For classification modes
+        target_metric = 'in_dist_dice validation error'
+        best_value = -float('inf')  # We want to maximize
+        best_epoch_value = None
+    else:
+        # For non-classification modes
+        target_metric = 'chamfer validation error'
+        best_value = float('inf')  # We want to minimize
+        best_epoch_value = None
 
-    min_recon_error = float('inf')
-    min_recon_error_epoch = None
+    try:
+        with open(filepath, 'r') as file:
+            for line in file:
+                # Extract epoch number
+                epoch_match = re.search(r'epoch:(\d+)', line)
+                if epoch_match:
+                    data_found = True
+                    epoch = int(epoch_match.group(1))
 
-    max_epochs = 0
+                    # Skip epochs beyond max_epoch
+                    if epoch > max_epoch:
+                        continue
 
-    with open(filepath, 'r') as file:
-        for line in file:
-            # Extract epoch number
-            epoch_match = re.search(r'epoch:(\d+)', line)
-            if epoch_match:
-                data_found = True
-                epoch = int(epoch_match.group(1))
-                
-                # Skip epochs beyond max_epoch
-                if epoch > max_epoch:
-                    continue
+                    # Update max_epochs
+                    if epoch > metrics_extracted.get('max_epochs', 0):
+                        metrics_extracted['max_epochs'] = epoch
 
-                if epoch > max_epochs:
-                    max_epochs = epoch
-
-                # Check for dice validation error (only if classification is involved)
-                if '_class' in mode:
-                    dice_match = re.search(r'dice validation error:([^\s]+)', line)
-                    if dice_match:
-                        dice_value = dice_match.group(1)
-                        if dice_value.lower() != 'nan':
-                            try:
-                                dice_value = float(dice_value)
-                                if dice_value > max_dice:
-                                    max_dice = dice_value
-                                    max_dice_epoch = epoch
-                            except ValueError:
-                                pass  # Handle cases where conversion fails
-
-                # Check for reconstruction validation error (only if reconstruction is involved)
-                if '_recon' in mode or mode == '_recon_class':#possible error
-                    recon_match = re.search(r'reconstruction validation error:([^\s]+)', line)
-                    if recon_match:
-                        recon_value = recon_match.group(1)
-                        if recon_value.lower() != 'nan':
-                            try:
-                                recon_value = float(recon_value)
-                                if recon_value < min_recon_error:
-                                    min_recon_error = recon_value
-                                    min_recon_error_epoch = epoch
-                            except ValueError:
-                                pass  # Handle cases where conversion fails
+                    # Extract target metric
+                    metric_match = re.search(rf'{re.escape(target_metric)}:([^\s]+)', line)
+                    if metric_match:
+                        metric_value_str = metric_match.group(1)
+                        if metric_value_str.lower() == 'nan':
+                            metrics_extracted[target_metric] = 'NaN'
+                            metrics_extracted[f'{target_metric}_epoch'] = 'NaN'
+                            logging.info(f"Metric '{target_metric}' is NaN in file '{filepath}' at epoch {epoch}")
+                            continue
+                        try:
+                            metric_value = float(metric_value_str)
+                            if '_class' in mode:
+                                # Maximize the metric
+                                if metric_value > best_value:
+                                    best_value = metric_value
+                                    best_epoch_value = epoch
+                                    logging.info(f"New best {target_metric}: {metric_value} at epoch {epoch} in '{filepath}'")
+                            else:
+                                # Minimize the metric
+                                if metric_value < best_value:
+                                    best_value = metric_value
+                                    best_epoch_value = epoch
+                                    logging.info(f"New best {target_metric}: {metric_value} at epoch {epoch} in '{filepath}'")
+                        except ValueError:
+                            logging.warning(f"Invalid value for '{target_metric}' in file '{filepath}' at epoch {epoch}")
+    except Exception as e:
+        logging.error(f"Error reading log file '{filepath}': {e}")
+        return metrics_extracted, data_found
 
     # Assign extracted metrics based on mode
-    if max_epochs > 0:
-        metrics_extracted['max_epochs'] = max_epochs
-    else:
-        metrics_extracted['max_epochs'] = 'No data found in log file'
-
     if '_class' in mode:
-        if max_dice != -float('inf'):
-            metrics_extracted['max_validation_dice'] = max_dice
-            metrics_extracted['max_validation_dice_epoch'] = max_dice_epoch
+        if best_value != -float('inf'):
+            metrics_extracted[target_metric] = best_value
+            metrics_extracted[f'{target_metric}_epoch'] = best_epoch_value
         else:
-            metrics_extracted['max_validation_dice'] = 'No dice data found'
-            metrics_extracted['max_validation_dice_epoch'] = 'No dice epoch data found'
-
-    if '_recon' in mode or mode == '_recon_class':
-        if min_recon_error != float('inf'):
-            metrics_extracted['min_recon_error'] = min_recon_error
-            metrics_extracted['min_recon_error_epoch'] = min_recon_error_epoch
+            metrics_extracted[target_metric] = 'No valid data found'
+            metrics_extracted[f'{target_metric}_epoch'] = 'No valid epoch found'
+    else:
+        if best_value != float('inf'):
+            metrics_extracted[target_metric] = best_value
+            metrics_extracted[f'{target_metric}_epoch'] = best_epoch_value
         else:
-            metrics_extracted['min_recon_error'] = 'No recon error data found'
-            metrics_extracted['min_recon_error_epoch'] = 'No recon error epoch data found'
+            metrics_extracted[target_metric] = 'No valid data found'
+            metrics_extracted[f'{target_metric}_epoch'] = 'No valid epoch found'
 
     return metrics_extracted, data_found
 
+def get_best_model_filename(model_dict, random_number, best_epoch):
+    """
+    Retrieves the best model filename based on random_number and best_epoch.
+    """
+    if not isinstance(best_epoch, int):
+        return 'Best epoch not valid'
+
+    key = (random_number, best_epoch)
+    best_model_filename = model_dict.get(key)
+    if best_model_filename:
+        return best_model_filename
+    else:
+        # Try to find a model file with the closest epoch less than or equal to the best epoch
+        candidate_epochs = [epoch for (rn, epoch) in model_dict.keys() if rn == random_number and isinstance(epoch, int) and epoch <= best_epoch]
+        if candidate_epochs:
+            closest_epoch = max(candidate_epochs)
+            model_key = (random_number, closest_epoch)
+            best_model_filename = model_dict.get(model_key)
+            if closest_epoch != best_epoch and best_model_filename:
+                return f"{best_model_filename} (closest to epoch {best_epoch})"
+            elif best_model_filename:
+                return best_model_filename
+        return 'Model file not found for best epoch'
 
 def main(args):
-    # Create MultiIndex for columns
-    tuples = []
-    # First three columns are surf_type, surf_hemi, GAT Layers with no sub-columns
-    tuples.extend([('', 'surf_type'), ('', 'surf_hemi'), ('', 'GAT Layers')])
+    # Verify and list log files
+    logging.info(f"Listing files in log_dir: {args.log_dir}")
+    try:
+        log_files = [f for f in os.listdir(args.log_dir) if f.endswith('.log')]
+        logging.info(f"Found {len(log_files)} log files.")
+    except Exception as e:
+        logging.error(f"Error accessing log_dir: {e}")
+        return
 
-    # For each mode, add the applicable metrics
-    for mode, metrics in modes_metrics.items():
-        for metric in metrics:
-            tuples.append((metric, mode))
+    # Parse all log files and organize them
+    parsed_logs = {}
+    for log_file in log_files:
+        parsed = parse_log_filename(log_file)
+        if parsed:
+            surf_type, surf_hemi, gat_layers, mode, random_number = parsed
+            key = (surf_type, surf_hemi, gat_layers, mode)
+            parsed_logs[key] = random_number  # Assuming one log per key
+        else:
+            logging.warning(f"Failed to parse log filename: {log_file}")
 
-    # Create MultiIndex
-    index = pd.MultiIndex.from_tuples(tuples, names=['Metric', 'Mode'])
+    # Verify and list model files
+    logging.info(f"Listing files in model_dir: {args.model_dir}")
+    try:
+        model_files = [f for f in os.listdir(args.model_dir) if f.endswith('.pt')]
+        logging.info(f"Found {len(model_files)} model files.")
+    except Exception as e:
+        logging.error(f"Error accessing model_dir: {e}")
+        return
+
+    # Parse model filenames
+    model_dict = parse_model_filenames(model_files)
+
+    # Prepare per-mode max_epoch mapping
+    max_epochs_dict = {
+        '_norecon_class': args.max_epoch_norecon_class,
+        '_recon_noclass': args.max_epoch_recon_noclass,
+        '_recon_class': args.max_epoch_recon_class
+    }
 
     # Initialize an empty list to collect rows
     rows_list = []
@@ -183,7 +256,7 @@ def main(args):
     # Define possible values based on provided CSV data
     surf_types = ['wm', 'gm']
     surf_hemis = ['lh', 'rh']
-    gat_layers = [4, 8]#, 12]
+    gat_layers = [8]  # Adjust as necessary
 
     # Populate the list with all combinations
     for surf_type in surf_types:
@@ -195,58 +268,9 @@ def main(args):
                     ('', 'GAT Layers'): layer
                 }
                 rows_list.append(row)
-    
-    # Create DataFrame from the list of rows
-    df = pd.DataFrame(rows_list, columns=index)
 
-    # Function to extract max_epoch per mode
-    def get_max_epoch_for_mode(mode, max_epochs_dict):
-        """
-        Retrieves the max_epoch value for a given mode from the max_epochs_dict.
-        """
-        
-        return max_epochs_dict.get(mode, 60)  # Default to 60 if not specified
-
-    # Function to decode region names (placeholder)
-    def decode_names():
-        """
-        Placeholder function to decode region names.
-        Replace with actual implementation as needed.
-        """
-        return []
-
-    # Function to map best epoch to model filename
-    def get_best_model_filename(model_dict, random_number, best_epoch):
-        """
-        Retrieves the best model filename based on random_number and best_epoch.
-        """
-        key = (random_number, best_epoch)
-        best_model_filename = model_dict.get(key)
-        if best_model_filename:
-            return best_model_filename
-        else:
-            # Try to find a model file with the closest epoch less than or equal to the best epoch
-            candidate_epochs = [epoch for (rn, epoch) in model_dict.keys() if rn == random_number and epoch <= best_epoch]
-            if candidate_epochs:
-                closest_epoch = max(candidate_epochs)
-                model_key = (random_number, closest_epoch)
-                best_model_filename = model_dict.get(model_key)
-                if closest_epoch != best_epoch and best_model_filename:
-                    return f"{best_model_filename} (closest to epoch {best_epoch})"
-                elif best_model_filename:
-                    return best_model_filename
-            return 'Model file not found for best epoch'
-
-    # Parse model filenames
-    model_files = [f for f in os.listdir(args.model_dir) if f.endswith('.pt')]
-    model_dict = parse_model_filenames(model_files)
-
-    # Prepare per-mode max_epoch mapping
-    max_epochs_dict = {
-        '_norecon_class': args.max_epoch_norecon_class,
-        '_recon_noclass': args.max_epoch_recon_noclass,
-        '_recon_class': args.max_epoch_recon_class
-    }
+    # Create DataFrame from the list of rows with dtype=object to handle mixed data types
+    df = pd.DataFrame(rows_list, columns=index, dtype=object)
 
     # Process each row in the DataFrame
     for idx, row in df.iterrows():
@@ -255,34 +279,40 @@ def main(args):
         gat_layers = int(row[('', 'GAT Layers')])
 
         for mode in modes_metrics.keys():
-            # Construct expected log filename pattern
-            pattern = rf'^model_{surf_type}_hcp_{surf_hemi}_.*?_layers{gat_layers}.*?{mode}_(\d{{6}})_heads\d+\.log$'
-            matching_logs = []
+            key = (surf_type, surf_hemi, gat_layers, mode)
+            random_number = parsed_logs.get(key)
 
-            # Search for matching log files
-            for log_file in os.listdir(args.log_dir):
-                match = re.match(pattern, log_file)
-                if match:
-                    random_number = match.group(1)
-                    matching_logs.append((log_file, random_number))
-
-            if not matching_logs:
+            if not random_number:
                 # No log file exists for this combination
                 reason = 'Log file does not exist'
-                # Populate all applicable metrics with the reason
                 for metric in modes_metrics[mode]:
                     df.at[idx, (metric, mode)] = reason
+                logging.info(f"No log file for combination: surf_type={surf_type}, surf_hemi={surf_hemi}, "
+                             f"gat_layers={gat_layers}, mode={mode}")
                 continue  # Move to the next mode
 
-            # Use the first matching log file (assuming there should only be one)
-            log_file, random_number = matching_logs[0]
-            log_path = os.path.join(args.log_dir, log_file)
+            # Construct the exact log filename
+            log_filename = f"model_{surf_type}_hcp_{surf_hemi}_vc_v4_csrvc_layers{gat_layers}_" \
+                           f"sf0.1_euler{mode}_de0.1_{random_number}_heads1.log"
+            log_path = os.path.join(args.log_dir, log_filename)
 
-            # Get the max_epoch for the current mode
-            current_max_epoch = get_max_epoch_for_mode(mode, max_epochs_dict)
+            # Check if the log file actually exists
+            if not os.path.isfile(log_path):
+                reason = 'Log file does not exist'
+                for metric in modes_metrics[mode]:
+                    df.at[idx, (metric, mode)] = reason
+                logging.warning(f"Log file does not exist: {log_path}")
+                continue
 
-            # Parse the log file with epoch threshold
-            metrics, data_found = parse_log_file(log_path, mode, current_max_epoch)
+            # Define target_metric based on mode
+            if '_class' in mode:
+                target_metric = 'in_dist_dice validation error'
+            else:
+                target_metric = 'chamfer validation error'
+
+            # Parse the log file
+            logging.info(f"Parsing log file: {log_path}")
+            metrics, data_found = parse_log_file(log_path, mode, max_epochs_dict.get(mode, 60))
 
             # Update the DataFrame with extracted metrics
             for metric, value in metrics.items():
@@ -290,23 +320,21 @@ def main(args):
                     df.at[idx, (metric, mode)] = value
 
             # Include the log filename in the appropriate metric
-            if 'max_validation_dice_epoch_filename' in modes_metrics[mode]:
-                df.at[idx, ('max_validation_dice_epoch_filename', mode)] = log_file
-            if 'min_recon_error_filename' in modes_metrics[mode]:
-                df.at[idx, ('min_recon_error_filename', mode)] = log_file
+            if f'{target_metric}_epoch_filename' in modes_metrics[mode]:
+                df.at[idx, (f'{target_metric}_epoch_filename', mode)] = log_filename
 
             # Find the best model filename corresponding to the best epoch and random number
-            best_epoch = None
-            if 'max_validation_dice_epoch' in metrics and '_class' in mode:
-                best_epoch = metrics['max_validation_dice_epoch']
-            elif 'min_recon_error_epoch' in metrics and ('_recon' in mode or mode == '_recon_class'):#potential error
-                best_epoch = metrics['min_recon_error_epoch']
+            best_epoch = metrics.get(f'{target_metric}_epoch')
 
-            if best_epoch is not None and random_number is not None:
+            # Ensure best_epoch is an integer
+            if isinstance(best_epoch, int):
                 best_model_filename = get_best_model_filename(model_dict, random_number, best_epoch)
                 df.at[idx, ('best_model_filename', mode)] = best_model_filename
+                logging.info(f"Best model for mode {mode}: {best_model_filename}")
             else:
                 df.at[idx, ('best_model_filename', mode)] = 'Best epoch not found'
+                logging.info(f"Best epoch is not valid for combination: surf_type={surf_type}, surf_hemi={surf_hemi}, "
+                             f"gat_layers={gat_layers}, mode={mode}")
 
             # If no data was found in the log file, provide a reason
             if not data_found:
@@ -315,6 +343,7 @@ def main(args):
                 for metric in modes_metrics[mode]:
                     if metric != 'max_epochs':
                         df.at[idx, (metric, mode)] = reason
+                logging.warning(f"No data found in log file: {log_path}")
 
     # Replace any remaining NaN values with a default reason
     df.fillna('Data not available', inplace=True)
@@ -322,16 +351,16 @@ def main(args):
     # Save the DataFrame to CSV with two-level headers
     df.to_csv(args.output_csv, index=False)
 
-    print(f"CSV file '{args.output_csv}' has been created successfully in the current directory.")
+    logging.info(f"CSV file '{args.output_csv}' has been created successfully.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract Validation Metrics with Epoch Thresholds")
 
     # Add command-line arguments
-    parser.add_argument('--max_epoch_norecon_class', type=int, default=60, help="Max epoch for _norecon_class mode")
+    parser.add_argument('--max_epoch_norecon_class', type=int, default=50, help="Max epoch for _norecon_class mode")
     parser.add_argument('--max_epoch_recon_noclass', type=int, default=60, help="Max epoch for _recon_noclass mode")
-    parser.add_argument('--max_epoch_recon_class', type=int, default=60, help="Max epoch for _recon_class mode")
-    
+    parser.add_argument('--max_epoch_recon_class', type=int, default=70, help="Max epoch for _recon_class mode")
+
     parser.add_argument('--log_dir', type=str, default=default_log_dir, help="Directory containing log files")
     parser.add_argument('--model_dir', type=str, default=default_model_dir, help="Directory containing model files")
     parser.add_argument('--output_csv', type=str, default=default_output_csv, help="Output CSV filename")
