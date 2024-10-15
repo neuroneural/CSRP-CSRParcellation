@@ -21,6 +21,7 @@ from util.mesh import laplacian_smooth, compute_normal, compute_mesh_distance, c
 from util.tca import topology
 from model.net import Unet, CortexODE
 from model.csrvcv3 import CSRVCV3
+from model.csrvcv4 import CSRVCV4
 from config import load_config
 from data.csrandvcdataloader import SegDataset, BrainDataset
 from torch.utils.data import DataLoader
@@ -165,11 +166,11 @@ def load_models_and_weights(device, config):
 
     # Determine model architecture
     model_type = config.model_type.lower()
-    if model_type not in ['csrvcv3', 'cortexode']:
-        print(f"Unsupported model_type '{config.model_type}'. Supported types: 'csrvcv3', 'cortexode'. Exiting.")
+    if model_type not in ['csrvcv3', 'csrvcv4', 'cortexode']:
+        print(f"Unsupported model_type '{config.model_type}'. Supported types: 'csrvcv3', 'csrvcv4', 'cortexode'. Exiting.")
         exit(1)
 
-    if model_type == 'csrvcv3':
+    if model_type in ['csrvcv3', 'csrvcv4']:
         # Check for models specified in config
         wm_model_specified = hasattr(config, 'model_file_wm') and config.model_file_wm is not None
         gm_model_specified = hasattr(config, 'model_file_gm') and config.model_file_gm is not None
@@ -191,8 +192,12 @@ def load_models_and_weights(device, config):
             rand_num_wm_def, epoch_wm_def = extract_rand_num_and_epoch_from_filename(config.model_file_wm_deformation)
             print(f"WM Deformation Model Random Number: {rand_num_wm_def}, Epochs: {epoch_wm_def}")
             epoch_info['wm_def_epoch'] = epoch_wm_def
-            model_wm_def = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            if model_type == 'csrvcv3':
+                model_wm_def = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            elif model_type == 'csrvcv4':
+                model_wm_def = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_wm_def = torch.load(model_file_wm_def, map_location=device)
             if 'model_state_dict' in checkpoint_wm_def:
                 model_wm_def.load_state_dict(checkpoint_wm_def['model_state_dict'])
@@ -209,8 +214,12 @@ def load_models_and_weights(device, config):
             rand_num_wm_cls, epoch_wm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_wm_classification)
             print(f"WM Classification Model Random Number: {rand_num_wm_cls}, Epochs: {epoch_wm_cls}")
             epoch_info['wm_cls_epoch'] = epoch_wm_cls
-            model_wm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            if model_type == 'csrvcv3':
+                model_wm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            elif model_type == 'csrvcv4':
+                model_wm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_wm_cls = torch.load(model_file_wm_cls, map_location=device)
             if 'model_state_dict' in checkpoint_wm_cls:
                 model_wm_cls.load_state_dict(checkpoint_wm_cls['model_state_dict'])
@@ -227,8 +236,12 @@ def load_models_and_weights(device, config):
             rand_num_gm_def, epoch_gm_def = extract_rand_num_and_epoch_from_filename(config.model_file_gm_deformation)
             print(f"GM Deformation Model Random Number: {rand_num_gm_def}, Epochs: {epoch_gm_def}")
             epoch_info['gm_def_epoch'] = epoch_gm_def
-            model_gm_def = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            if model_type == 'csrvcv3':
+                model_gm_def = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            elif model_type == 'csrvcv4':
+                model_gm_def = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_gm_def = torch.load(model_file_gm_def, map_location=device)
             if 'model_state_dict' in checkpoint_gm_def:
                 model_gm_def.load_state_dict(checkpoint_gm_def['model_state_dict'])
@@ -245,8 +258,12 @@ def load_models_and_weights(device, config):
             rand_num_gm_cls, epoch_gm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_gm_classification.strip())
             print(f"GM Classification Model Random Number: {rand_num_gm_cls}, Epochs: {epoch_gm_cls}")
             epoch_info['gm_cls_epoch'] = epoch_gm_cls
-            model_gm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            if model_type == 'csrvcv3':
+                model_gm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            elif model_type == 'csrvcv4':
+                model_gm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_gm_cls = torch.load(model_file_gm_cls, map_location=device)
             if 'model_state_dict' in checkpoint_gm_cls:
                 model_gm_cls.load_state_dict(checkpoint_gm_cls['model_state_dict'])
@@ -268,8 +285,12 @@ def load_models_and_weights(device, config):
             rand_num_wm, epoch_wm = extract_rand_num_and_epoch_from_filename(config.model_file_wm)
             print(f"WM Model Random Number: {rand_num_wm}, Epochs: {epoch_wm}")
             epoch_info['wm_epoch'] = epoch_wm
-            model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                               use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            if model_type == 'csrvcv3':
+                model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            elif model_type == 'csrvcv4':
+                model_wm = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_wm = torch.load(model_file_wm, map_location=device)
             if 'model_state_dict' in checkpoint_wm:
                 model_wm.load_state_dict(checkpoint_wm['model_state_dict'])
@@ -286,8 +307,12 @@ def load_models_and_weights(device, config):
             rand_num_gm, epoch_gm = extract_rand_num_and_epoch_from_filename(config.model_file_gm)
             print(f"GM Model Random Number: {rand_num_gm}, Epochs: {epoch_gm}")
             epoch_info['gm_epoch'] = epoch_gm
-            model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                               use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            if model_type == 'csrvcv3':
+                model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+            elif model_type == 'csrvcv4':
+                model_gm = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_gm = torch.load(model_file_gm, map_location=device)
             if 'model_state_dict' in checkpoint_gm:
                 model_gm.load_state_dict(checkpoint_gm['model_state_dict'])
@@ -297,9 +322,8 @@ def load_models_and_weights(device, config):
             models['model_gm'] = model_gm
 
         else:
-            print("Unsupported condition for CSRVCV3 models. Exiting.")
+            print("Unsupported condition for CSRVCV models. Exiting.")
             exit(1)
-
     elif model_type == 'cortexode':
         # Loading CortexODE model
         condition = 'cortexode'
@@ -363,7 +387,7 @@ if __name__ == '__main__':
     surf_hemi = config.surf_hemi           # 'lh', 'rh'
     device = config.device                 # e.g., 'cuda' or 'cpu'
     tag = config.tag                       # Identity of the experiment
-    model_type = config.model_type         # 'csrvcv3' or 'cortexode'
+    model_type = config.model_type         # 'csrvcv3', 'csrvcv4', or 'cortexode'
 
     C = config.dim_h                       # Hidden dimension of features
     K = config.kernel_size                 # Kernel / cube size
@@ -468,7 +492,7 @@ if __name__ == '__main__':
                     f_in_tensor = f_in_wm.unsqueeze(0).to(device)
 
                 if condition == 'a':
-                    if model_type == 'csrvcv3':
+                    if model_type in ['csrvcv3', 'csrvcv4']:
                         # Deformation and Classification for WM
                         model_wm_def = models.get('model_wm_def', None)
                         model_wm_cls = models.get('model_wm_cls', None)
@@ -521,7 +545,7 @@ if __name__ == '__main__':
 
 
                 elif condition == 'b':
-                    if model_type == 'csrvcv3':
+                    if model_type in ['csrvcv3', 'csrvcv4']:
                         # Combined Deformation and Classification for WM
                         model_wm = models.get('model_wm', None)
                         if model_wm is not None:
@@ -657,7 +681,7 @@ if __name__ == '__main__':
 
                 # Save the predicted surface with annotations
                 try:
-                    if model_type == 'csrvcv3':
+                    if model_type in ['csrvcv3', 'csrvcv4']:
                         save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
                         print(f"Saved predicted white matter surface with annotations for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf' and '.annot'")
 
