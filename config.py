@@ -42,7 +42,7 @@ def load_config():
     parser.add_argument('--device', default="gpu", type=str, help="gpu or cpu")
     parser.add_argument('--tag', default='0000', type=str, help="identity for experiments")
 
-    parser.add_argument('--dropedge_prob', default='.5', type=float, help="identity for experiments")
+    parser.add_argument('--dropedge_prob', default='.1', type=float, help="identity for experiments")
 
     # Reconstruction loss thresholds
     parser.add_argument('--mse_threshold', default=0.01, type=float, help="target amount of error to start from")
