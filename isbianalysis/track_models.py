@@ -16,6 +16,7 @@ logging.basicConfig(
 default_log_dir = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model'
 default_model_dir = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model'
 default_output_csv = 'validation_metrics.csv'
+default_incomplete_csv = 'incomplete_runs.csv'  # New CSV file for incomplete runs
 
 # Define possible modes and their applicable metrics
 modes_metrics = {
@@ -131,13 +132,13 @@ def parse_log_file(filepath, mode, max_epoch):
                     data_found = True
                     epoch = int(epoch_match.group(1))
 
-                    # Skip epochs beyond max_epoch
-                    if epoch > max_epoch:
-                        continue
-
                     # Update max_epochs
                     if epoch > metrics_extracted.get('max_epochs', 0):
                         metrics_extracted['max_epochs'] = epoch
+
+                    # Skip epochs beyond max_epoch
+                    if epoch > max_epoch:
+                        continue
 
                     # Extract target metric
                     metric_match = re.search(rf'{re.escape(target_metric)}:([^\s]+)', line)
@@ -213,7 +214,7 @@ def main(args):
             key = (surf_type, surf_hemi, gat_layers, mode)
             if key not in parsed_logs:
                 parsed_logs[key] = []
-            parsed_logs[key].append(random_number)
+            parsed_logs[key].append((random_number, log_file))  # Store tuple of (random_number, log_file)
         else:
             logging.warning(f"Failed to parse log filename: {log_file}")
 
@@ -236,8 +237,11 @@ def main(args):
         '_recon_class': args.max_epoch_recon_class
     }
 
-    # Initialize an empty list to collect rows
+    # Initialize an empty list to collect rows for the main CSV
     rows_list = []
+
+    # Initialize a dictionary to collect incomplete runs for the second CSV
+    incomplete_runs_dict = {}  # Keyed by hyperparameter combination
 
     # Define possible values based on provided CSV data
     surf_types = ['wm', 'gm']
@@ -284,10 +288,9 @@ def main(args):
             best_metrics = {}
             data_found_any = False  # Flag to check if any data was found in any log
 
-            for random_number in random_numbers:
+            for random_number, log_file in random_numbers:
                 # Construct the exact log filename
-                log_filename = f"model_{surf_type}_hcp_{surf_hemi}_vc_v4_csrvc_layers{gat_layers}_" \
-                               f"sf0.1_euler{mode}_de0.1_{random_number}_heads1.log"
+                log_filename = log_file
                 log_path = os.path.join(args.log_dir, log_filename)
 
                 # Check if the log file actually exists
@@ -305,7 +308,7 @@ def main(args):
 
                 # Parse the log file
                 logging.info(f"Parsing log file: {log_path}")
-                metrics, data_found = parse_log_file(log_path, mode, max_epochs_dict.get(mode, 60))
+                metrics, data_found = parse_log_file(log_path, mode, max_epochs_dict.get(mode, 100))
 
                 if data_found:
                     data_found_any = True
@@ -314,6 +317,7 @@ def main(args):
                 if target_metric in metrics and f'{target_metric}_epoch' in metrics:
                     current_metric_value = metrics[target_metric]
                     current_epoch = metrics[f'{target_metric}_epoch']
+                    max_epochs = metrics.get('max_epochs', None)
 
                     # Compare with the best metric value
                     if best_metric_value is None:
@@ -339,6 +343,51 @@ def main(args):
                                 best_random_number = random_number
                                 best_metrics = metrics.copy()
                                 best_log_filename = log_filename
+
+                    # Check if max_epochs is less than specified max_epoch
+                    if max_epochs is not None and max_epochs < max_epochs_dict.get(mode, 100):
+                        # Find the highest epoch .pt file saved for this random_number
+                        candidate_epochs = [epoch for (rn, epoch) in model_dict.keys()
+                                            if rn == random_number and isinstance(epoch, int)]
+                        if candidate_epochs:
+                            highest_epoch = max(candidate_epochs)
+                            model_key = (random_number, highest_epoch)
+                            highest_model_filename = model_dict.get(model_key, 'Model file not found')
+                        else:
+                            highest_epoch = 'No models saved'
+                            highest_model_filename = 'Model file not found'
+
+                        # Prepare the data to be stored
+                        run_data = {
+                            'surf_type': surf_type,
+                            'surf_hemi': surf_hemi,
+                            'gat_layers': gat_layers,
+                            'mode': mode,
+                            'random_number': random_number,
+                            'log_filename': log_filename,
+                            'max_epochs_achieved': max_epochs,
+                            'expected_max_epoch': max_epochs_dict.get(mode, 100),
+                            'highest_model_epoch': highest_epoch,
+                            'highest_model_filename': highest_model_filename
+                        }
+
+                        # Key for incomplete_runs_dict
+                        incomplete_key = (surf_type, surf_hemi, gat_layers, mode)
+
+                        # Check if we already have an entry for this hyperparameter combination
+                        if incomplete_key in incomplete_runs_dict:
+                            existing_run = incomplete_runs_dict[incomplete_key]
+                            # Compare max_epochs_achieved
+                            if max_epochs > existing_run['max_epochs_achieved']:
+                                # Current run has higher max_epochs_achieved, replace the existing one
+                                incomplete_runs_dict[incomplete_key] = run_data
+                        else:
+                            # No existing entry, add this run
+                            incomplete_runs_dict[incomplete_key] = run_data
+
+                else:
+                    # No valid metrics found in this log file
+                    logging.warning(f"No valid data found in log file: {log_path}")
 
             if best_metric_value is not None:
                 # Update the DataFrame with the best metrics
@@ -374,6 +423,17 @@ def main(args):
     df.to_csv(args.output_csv, index=False)
 
     logging.info(f"CSV file '{args.output_csv}' has been created successfully.")
+
+    # Convert incomplete_runs_dict to a list
+    incomplete_runs_list = list(incomplete_runs_dict.values())
+
+    # Create DataFrame for incomplete runs and save to CSV
+    incomplete_df = pd.DataFrame(incomplete_runs_list)
+    incomplete_df.to_csv('incomplete_runs.csv', index=False)
+    if not incomplete_runs_list:
+        logging.info("No incomplete runs found. 'incomplete_runs.csv' created but is empty.")
+    else:
+        logging.info("CSV file 'incomplete_runs.csv' has been created successfully.")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract Validation Metrics with Epoch Thresholds")
