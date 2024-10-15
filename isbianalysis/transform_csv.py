@@ -3,6 +3,18 @@ import csv
 import re
 import os
 
+# Read the incomplete runs
+incomplete_df = pd.read_csv('incomplete_runs.csv')
+
+# Create a set of hyperparameter combinations to exclude (surf_type, surf_hemi, gat_layers, mode)
+incomplete_runs_set = set()
+for idx, row in incomplete_df.iterrows():
+    surf_type = row['surf_type']
+    surf_hemi = row['surf_hemi']
+    gat_layers = row['gat_layers']
+    mode = row['mode']
+    incomplete_runs_set.add((surf_type, surf_hemi, gat_layers, mode))
+
 # Read the CSV with two header rows
 df = pd.read_csv('validation_metrics.csv', header=[0, 1])
 
@@ -24,11 +36,23 @@ for index, row in df.iterrows():
         # Check if the mode has data
         best_model_filename = row.get(('best_model_filename', mode), '')
         if pd.notna(best_model_filename) and 'Log file does not exist' not in str(best_model_filename):
-            # Extract additional parameters
-            if mode in ['_norecon_class', '_recon_class']:
-                epoch = row.get(('max_validation_dice_epoch', mode), '')
+            # Create a tuple to check in incomplete_runs_set
+            key = (surf_type, surf_hemi, gat_layers, mode)
+
+            if key in incomplete_runs_set:
+                # This hyperparameter combination did not achieve max epochs, skip it
+                continue
+
+            # Get the appropriate target metric and epoch column names
+            if '_class' in mode:
+                # For classification modes
+                target_metric_epoch_col = ('in_dist_dice validation error_epoch', mode)
             else:
-                epoch = row.get(('min_recon_error_epoch', mode), '')
+                # For non-classification modes
+                target_metric_epoch_col = ('chamfer validation error_epoch', mode)
+
+            # Get the best epoch
+            epoch = row.get(target_metric_epoch_col, '')
 
             # Ensure epoch is an integer
             if pd.notna(epoch):
@@ -43,6 +67,9 @@ for index, row in df.iterrows():
             # Extract random_number from the best_model_filename
             match = re.search(r'_(\d{6})\.pt$', str(best_model_filename))
             random_number = match.group(1) if match else ''
+
+            # Ensure random_number is a string
+            random_number = str(random_number)
 
             # Determine reconstruction and classification flags
             reconstruction = 'False' if 'norecon' in mode else 'True'
