@@ -10,7 +10,7 @@ df = pd.read_csv('validation_metrics.csv', header=[0, 1])
 rows = []
 
 # Define MODEL_DIR (adjust the path as needed)
-MODEL_DIR = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv3undirectedjoint_0/model/'
+MODEL_DIR = '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/'
 
 # Iterate over each row in the DataFrame
 for index, row in df.iterrows():

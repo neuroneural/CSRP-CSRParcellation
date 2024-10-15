@@ -144,10 +144,7 @@ def parse_log_file(filepath, mode, max_epoch):
                     if metric_match:
                         metric_value_str = metric_match.group(1)
                         if metric_value_str.lower() == 'nan':
-                            metrics_extracted[target_metric] = 'NaN'
-                            metrics_extracted[f'{target_metric}_epoch'] = 'NaN'
-                            logging.info(f"Metric '{target_metric}' is NaN in file '{filepath}' at epoch {epoch}")
-                            continue
+                            continue  # Skip NaN values
                         try:
                             metric_value = float(metric_value_str)
                             if '_class' in mode:
@@ -155,13 +152,11 @@ def parse_log_file(filepath, mode, max_epoch):
                                 if metric_value > best_value:
                                     best_value = metric_value
                                     best_epoch_value = epoch
-                                    logging.info(f"New best {target_metric}: {metric_value} at epoch {epoch} in '{filepath}'")
                             else:
                                 # Minimize the metric
                                 if metric_value < best_value:
                                     best_value = metric_value
                                     best_epoch_value = epoch
-                                    logging.info(f"New best {target_metric}: {metric_value} at epoch {epoch} in '{filepath}'")
                         except ValueError:
                             logging.warning(f"Invalid value for '{target_metric}' in file '{filepath}' at epoch {epoch}")
     except Exception as e:
@@ -169,20 +164,9 @@ def parse_log_file(filepath, mode, max_epoch):
         return metrics_extracted, data_found
 
     # Assign extracted metrics based on mode
-    if '_class' in mode:
-        if best_value != -float('inf'):
-            metrics_extracted[target_metric] = best_value
-            metrics_extracted[f'{target_metric}_epoch'] = best_epoch_value
-        else:
-            metrics_extracted[target_metric] = 'No valid data found'
-            metrics_extracted[f'{target_metric}_epoch'] = 'No valid epoch found'
-    else:
-        if best_value != float('inf'):
-            metrics_extracted[target_metric] = best_value
-            metrics_extracted[f'{target_metric}_epoch'] = best_epoch_value
-        else:
-            metrics_extracted[target_metric] = 'No valid data found'
-            metrics_extracted[f'{target_metric}_epoch'] = 'No valid epoch found'
+    if best_epoch_value is not None:
+        metrics_extracted[target_metric] = best_value
+        metrics_extracted[f'{target_metric}_epoch'] = best_epoch_value
 
     return metrics_extracted, data_found
 
@@ -227,7 +211,9 @@ def main(args):
         if parsed:
             surf_type, surf_hemi, gat_layers, mode, random_number = parsed
             key = (surf_type, surf_hemi, gat_layers, mode)
-            parsed_logs[key] = random_number  # Assuming one log per key
+            if key not in parsed_logs:
+                parsed_logs[key] = []
+            parsed_logs[key].append(random_number)
         else:
             logging.warning(f"Failed to parse log filename: {log_file}")
 
@@ -280,70 +266,106 @@ def main(args):
 
         for mode in modes_metrics.keys():
             key = (surf_type, surf_hemi, gat_layers, mode)
-            random_number = parsed_logs.get(key)
+            random_numbers = parsed_logs.get(key)
 
-            if not random_number:
-                # No log file exists for this combination
+            if not random_numbers:
+                # No log files exist for this combination
                 reason = 'Log file does not exist'
                 for metric in modes_metrics[mode]:
                     df.at[idx, (metric, mode)] = reason
-                logging.info(f"No log file for combination: surf_type={surf_type}, surf_hemi={surf_hemi}, "
+                logging.info(f"No log files for combination: surf_type={surf_type}, surf_hemi={surf_hemi}, "
                              f"gat_layers={gat_layers}, mode={mode}")
                 continue  # Move to the next mode
 
-            # Construct the exact log filename
-            log_filename = f"model_{surf_type}_hcp_{surf_hemi}_vc_v4_csrvc_layers{gat_layers}_" \
-                           f"sf0.1_euler{mode}_de0.1_{random_number}_heads1.log"
-            log_path = os.path.join(args.log_dir, log_filename)
+            # Initialize variables to track the best metrics across all random_numbers
+            best_metric_value = None
+            best_epoch = None
+            best_random_number = None
+            best_metrics = {}
+            data_found_any = False  # Flag to check if any data was found in any log
 
-            # Check if the log file actually exists
-            if not os.path.isfile(log_path):
-                reason = 'Log file does not exist'
+            for random_number in random_numbers:
+                # Construct the exact log filename
+                log_filename = f"model_{surf_type}_hcp_{surf_hemi}_vc_v4_csrvc_layers{gat_layers}_" \
+                               f"sf0.1_euler{mode}_de0.1_{random_number}_heads1.log"
+                log_path = os.path.join(args.log_dir, log_filename)
+
+                # Check if the log file actually exists
+                if not os.path.isfile(log_path):
+                    logging.warning(f"Log file does not exist: {log_path}")
+                    continue
+
+                # Define target_metric based on mode
+                if '_class' in mode:
+                    target_metric = 'in_dist_dice validation error'
+                    is_classification = True
+                else:
+                    target_metric = 'chamfer validation error'
+                    is_classification = False
+
+                # Parse the log file
+                logging.info(f"Parsing log file: {log_path}")
+                metrics, data_found = parse_log_file(log_path, mode, max_epochs_dict.get(mode, 60))
+
+                if data_found:
+                    data_found_any = True
+
+                # Check if metrics were extracted
+                if target_metric in metrics and f'{target_metric}_epoch' in metrics:
+                    current_metric_value = metrics[target_metric]
+                    current_epoch = metrics[f'{target_metric}_epoch']
+
+                    # Compare with the best metric value
+                    if best_metric_value is None:
+                        best_metric_value = current_metric_value
+                        best_epoch = current_epoch
+                        best_random_number = random_number
+                        best_metrics = metrics.copy()
+                        best_log_filename = log_filename
+                    else:
+                        if is_classification:
+                            # For classification, maximize the metric
+                            if current_metric_value > best_metric_value:
+                                best_metric_value = current_metric_value
+                                best_epoch = current_epoch
+                                best_random_number = random_number
+                                best_metrics = metrics.copy()
+                                best_log_filename = log_filename
+                        else:
+                            # For regression, minimize the metric
+                            if current_metric_value < best_metric_value:
+                                best_metric_value = current_metric_value
+                                best_epoch = current_epoch
+                                best_random_number = random_number
+                                best_metrics = metrics.copy()
+                                best_log_filename = log_filename
+
+            if best_metric_value is not None:
+                # Update the DataFrame with the best metrics
+                for metric, value in best_metrics.items():
+                    if value is not None and (metric in modes_metrics[mode]):
+                        df.at[idx, (metric, mode)] = value
+
+                # Include the log filename in the appropriate metric
+                if f'{target_metric}_epoch_filename' in modes_metrics[mode]:
+                    df.at[idx, (f'{target_metric}_epoch_filename', mode)] = best_log_filename
+
+                # Find the best model filename corresponding to the best epoch and random number
+                if isinstance(best_epoch, int):
+                    best_model_filename = get_best_model_filename(model_dict, best_random_number, best_epoch)
+                    df.at[idx, ('best_model_filename', mode)] = best_model_filename
+                    logging.info(f"Best model for mode {mode}: {best_model_filename}")
+                else:
+                    df.at[idx, ('best_model_filename', mode)] = 'Best epoch not found'
+                    logging.info(f"Best epoch is not valid for combination: surf_type={surf_type}, surf_hemi={surf_hemi}, "
+                                 f"gat_layers={gat_layers}, mode={mode}")
+            else:
+                # No valid metrics found in any log file
+                reason = 'No valid data found in any log file'
                 for metric in modes_metrics[mode]:
                     df.at[idx, (metric, mode)] = reason
-                logging.warning(f"Log file does not exist: {log_path}")
-                continue
-
-            # Define target_metric based on mode
-            if '_class' in mode:
-                target_metric = 'in_dist_dice validation error'
-            else:
-                target_metric = 'chamfer validation error'
-
-            # Parse the log file
-            logging.info(f"Parsing log file: {log_path}")
-            metrics, data_found = parse_log_file(log_path, mode, max_epochs_dict.get(mode, 60))
-
-            # Update the DataFrame with extracted metrics
-            for metric, value in metrics.items():
-                if value is not None and (metric in modes_metrics[mode]):
-                    df.at[idx, (metric, mode)] = value
-
-            # Include the log filename in the appropriate metric
-            if f'{target_metric}_epoch_filename' in modes_metrics[mode]:
-                df.at[idx, (f'{target_metric}_epoch_filename', mode)] = log_filename
-
-            # Find the best model filename corresponding to the best epoch and random number
-            best_epoch = metrics.get(f'{target_metric}_epoch')
-
-            # Ensure best_epoch is an integer
-            if isinstance(best_epoch, int):
-                best_model_filename = get_best_model_filename(model_dict, random_number, best_epoch)
-                df.at[idx, ('best_model_filename', mode)] = best_model_filename
-                logging.info(f"Best model for mode {mode}: {best_model_filename}")
-            else:
-                df.at[idx, ('best_model_filename', mode)] = 'Best epoch not found'
-                logging.info(f"Best epoch is not valid for combination: surf_type={surf_type}, surf_hemi={surf_hemi}, "
-                             f"gat_layers={gat_layers}, mode={mode}")
-
-            # If no data was found in the log file, provide a reason
-            if not data_found:
-                reason = 'No matching data found in log file'
-                df.at[idx, ('max_epochs', mode)] = reason
-                for metric in modes_metrics[mode]:
-                    if metric != 'max_epochs':
-                        df.at[idx, (metric, mode)] = reason
-                logging.warning(f"No data found in log file: {log_path}")
+                logging.warning(f"No valid data found for combination: surf_type={surf_type}, surf_hemi={surf_hemi}, "
+                                f"gat_layers={gat_layers}, mode={mode}")
 
     # Replace any remaining NaN values with a default reason
     df.fillna('Data not available', inplace=True)
@@ -357,9 +379,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract Validation Metrics with Epoch Thresholds")
 
     # Add command-line arguments
-    parser.add_argument('--max_epoch_norecon_class', type=int, default=50, help="Max epoch for _norecon_class mode")
-    parser.add_argument('--max_epoch_recon_noclass', type=int, default=60, help="Max epoch for _recon_noclass mode")
-    parser.add_argument('--max_epoch_recon_class', type=int, default=70, help="Max epoch for _recon_class mode")
+    parser.add_argument('--max_epoch_norecon_class', type=int, default=100, help="Max epoch for _norecon_class mode")
+    parser.add_argument('--max_epoch_recon_noclass', type=int, default=100, help="Max epoch for _recon_noclass mode")
+    parser.add_argument('--max_epoch_recon_class', type=int, default=100, help="Max epoch for _recon_class mode")
 
     parser.add_argument('--log_dir', type=str, default=default_log_dir, help="Directory containing log files")
     parser.add_argument('--model_dir', type=str, default=default_model_dir, help="Directory containing model files")
