@@ -77,14 +77,14 @@ output_fieldnames = [
     'gat_heads',
     # WM model fields
     'wm_model_dir',
-    'wm_model_file_combined',
-    'wm_model_file_deformation',
-    'wm_model_file_classification',
+    'model_file_wm',
+    'model_file_wm_deformation',
+    'model_file_wm_classification',
     # GM model fields
     'gm_model_dir',
-    'gm_model_file_combined',
-    'gm_model_file_deformation',
-    'gm_model_file_classification'
+    'model_file_gm',
+    'model_file_gm_deformation',
+    'model_file_gm_classification'
 ]
 
 # Open the output CSV file for writing
@@ -106,13 +106,13 @@ with open(output_csv_file, 'w', newline='') as outfile:
             'gat_heads': gat_heads,
             # Initialize model fields to empty strings
             'wm_model_dir': '',
-            'wm_model_file_combined': '',
-            'wm_model_file_deformation': '',
-            'wm_model_file_classification': '',
+            'model_file_wm': '',
+            'model_file_wm_deformation': '',
+            'model_file_wm_classification': '',
             'gm_model_dir': '',
-            'gm_model_file_combined': '',
-            'gm_model_file_deformation': '',
-            'gm_model_file_classification': ''
+            'model_file_gm': '',
+            'model_file_gm_deformation': '',
+            'model_file_gm_classification': ''
         }
 
         # Process WM models
@@ -121,15 +121,15 @@ with open(output_csv_file, 'w', newline='') as outfile:
             # For case 'a', we expect separate deformation and classification models
             if 'deformation' in wm_models:
                 output_row['wm_model_dir'] = wm_models['deformation']['model_dir']
-                output_row['wm_model_file_deformation'] = wm_models['deformation']['model_file']
+                output_row['model_file_wm_deformation'] = wm_models['deformation']['model_file']
             if 'classification' in wm_models:
                 output_row['wm_model_dir'] = wm_models['classification']['model_dir']
-                output_row['wm_model_file_classification'] = wm_models['classification']['model_file']
+                output_row['model_file_wm_classification'] = wm_models['classification']['model_file']
         elif case == 'b':
             # For case 'b', we expect a combined model
             if 'combined' in wm_models:
                 output_row['wm_model_dir'] = wm_models['combined']['model_dir']
-                output_row['wm_model_file_combined'] = wm_models['combined']['model_file']
+                output_row['model_file_wm'] = wm_models['combined']['model_file']
 
         # Process GM models
         gm_models = group['gm']
@@ -137,27 +137,27 @@ with open(output_csv_file, 'w', newline='') as outfile:
             # For case 'a', we expect separate deformation and classification models
             if 'deformation' in gm_models:
                 output_row['gm_model_dir'] = gm_models['deformation']['model_dir']
-                output_row['gm_model_file_deformation'] = gm_models['deformation']['model_file']
+                output_row['model_file_gm_deformation'] = gm_models['deformation']['model_file']
             if 'classification' in gm_models:
                 output_row['gm_model_dir'] = gm_models['classification']['model_dir']
-                output_row['gm_model_file_classification'] = gm_models['classification']['model_file']
+                output_row['model_file_gm_classification'] = gm_models['classification']['model_file']
         elif case == 'b':
             # For case 'b', we expect a combined model
             if 'combined' in gm_models:
                 output_row['gm_model_dir'] = gm_models['combined']['model_dir']
-                output_row['gm_model_file_combined'] = gm_models['combined']['model_file']
+                output_row['model_file_gm'] = gm_models['combined']['model_file']
 
         # Optional: Log missing models
         missing_models = []
         if case == 'a':
-            if not (output_row['wm_model_file_deformation'] or output_row['wm_model_file_classification']):
+            if not (output_row['model_file_wm_deformation'] or output_row['model_file_wm_classification']):
                 missing_models.append('WM deformation/classification')
-            if not (output_row['gm_model_file_deformation'] or output_row['gm_model_file_classification']):
+            if not (output_row['model_file_gm_deformation'] or output_row['model_file_gm_classification']):
                 missing_models.append('GM deformation/classification')
         elif case == 'b':
-            if not output_row['wm_model_file_combined']:
+            if not output_row['model_file_wm']:
                 missing_models.append('WM combined')
-            if not output_row['gm_model_file_combined']:
+            if not output_row['model_file_gm']:
                 missing_models.append('GM combined')
 
         if missing_models:
