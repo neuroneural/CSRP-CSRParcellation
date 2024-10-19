@@ -20,7 +20,6 @@ from data.datautil import decode_names
 from util.mesh import laplacian_smooth, compute_normal, compute_mesh_distance, check_self_intersect
 from util.tca import topology
 from model.net import Unet, CortexODE
-from model.csrvcv3 import CSRVCV3
 from model.csrvcv4 import CSRVCV4
 from config import load_config
 from data.csrandvcdataloader import SegDataset, BrainDataset
@@ -166,11 +165,11 @@ def load_models_and_weights(device, config):
 
     # Determine model architecture
     model_type = config.model_type.lower()
-    if model_type not in ['csrvcv3', 'csrvcv4', 'cortexode']:
-        print(f"Unsupported model_type '{config.model_type}'. Supported types: 'csrvcv3', 'csrvcv4', 'cortexode'. Exiting.")
+    if model_type not in ['csrvcv4', 'cortexode']:
+        print(f"Unsupported model_type '{config.model_type}'. Supported types: 'csrvcv4', 'cortexode'. Exiting.")
         exit(1)
 
-    if model_type in ['csrvcv3', 'csrvcv4']:
+    if model_type in ['csrvcv4']:
         # Check for models specified in config
         wm_model_specified = hasattr(config, 'model_file_wm') and config.model_file_wm is not None
         gm_model_specified = hasattr(config, 'model_file_gm') and config.model_file_gm is not None
@@ -179,7 +178,7 @@ def load_models_and_weights(device, config):
         gm_def_specified = hasattr(config, 'model_file_gm_deformation') and config.model_file_gm_deformation is not None
         gm_cls_specified = hasattr(config, 'model_file_gm_classification') and config.model_file_gm_classification is not None
 
-        if wm_def_specified and wm_cls_specified and gm_def_specified and gm_cls_specified:
+        if wm_def_specified and gm_def_specified:
             # Condition 'a'
             condition = 'a'
             print(f"Model condition: {condition}")
@@ -192,10 +191,7 @@ def load_models_and_weights(device, config):
             rand_num_wm_def, epoch_wm_def = extract_rand_num_and_epoch_from_filename(config.model_file_wm_deformation)
             print(f"WM Deformation Model Random Number: {rand_num_wm_def}, Epochs: {epoch_wm_def}")
             epoch_info['wm_def_epoch'] = epoch_wm_def
-            if model_type == 'csrvcv3':
-                model_wm_def = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            elif model_type == 'csrvcv4':
+            if model_type == 'csrvcv4':
                 model_wm_def = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
                                        use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_wm_def = torch.load(model_file_wm_def, map_location=device)
@@ -207,26 +203,26 @@ def load_models_and_weights(device, config):
             models['model_wm_def'] = model_wm_def
 
             # Load WM Classification Model
-            model_file_wm_cls = os.path.join(config.model_dir.strip(), config.model_file_wm_classification.strip())
-            if not os.path.exists(model_file_wm_cls):
-                print(f"WM Classification Model file '{model_file_wm_cls}' not found. Exiting.")
-                exit(1)
-            rand_num_wm_cls, epoch_wm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_wm_classification)
-            print(f"WM Classification Model Random Number: {rand_num_wm_cls}, Epochs: {epoch_wm_cls}")
-            epoch_info['wm_cls_epoch'] = epoch_wm_cls
-            if model_type == 'csrvcv3':
-                model_wm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            elif model_type == 'csrvcv4':
-                model_wm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            checkpoint_wm_cls = torch.load(model_file_wm_cls, map_location=device)
-            if 'model_state_dict' in checkpoint_wm_cls:
-                model_wm_cls.load_state_dict(checkpoint_wm_cls['model_state_dict'])
+            if wm_cls_specified:
+                model_file_wm_cls = os.path.join(config.model_dir.strip(), config.model_file_wm_classification.strip())
+                if not os.path.exists(model_file_wm_cls):
+                    print(f"WM Classification Model file '{model_file_wm_cls}' not found. Exiting.")
+                    exit(1)
+                rand_num_wm_cls, epoch_wm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_wm_classification)
+                print(f"WM Classification Model Random Number: {rand_num_wm_cls}, Epochs: {epoch_wm_cls}")
+                epoch_info['wm_cls_epoch'] = epoch_wm_cls
+                if model_type == 'csrvcv4':
+                    model_wm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                        use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+                checkpoint_wm_cls = torch.load(model_file_wm_cls, map_location=device)
+                if 'model_state_dict' in checkpoint_wm_cls:
+                    model_wm_cls.load_state_dict(checkpoint_wm_cls['model_state_dict'])
+                else:
+                    model_wm_cls.load_state_dict(checkpoint_wm_cls)
+                model_wm_cls.eval()
+                models['model_wm_cls'] = model_wm_cls
             else:
-                model_wm_cls.load_state_dict(checkpoint_wm_cls)
-            model_wm_cls.eval()
-            models['model_wm_cls'] = model_wm_cls
+                print('missing wm classification model')
 
             # Load GM Deformation Model
             model_file_gm_def = os.path.join(config.model_dir.strip(), config.model_file_gm_deformation.strip())
@@ -236,10 +232,7 @@ def load_models_and_weights(device, config):
             rand_num_gm_def, epoch_gm_def = extract_rand_num_and_epoch_from_filename(config.model_file_gm_deformation)
             print(f"GM Deformation Model Random Number: {rand_num_gm_def}, Epochs: {epoch_gm_def}")
             epoch_info['gm_def_epoch'] = epoch_gm_def
-            if model_type == 'csrvcv3':
-                model_gm_def = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            elif model_type == 'csrvcv4':
+            if model_type == 'csrvcv4':
                 model_gm_def = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
                                        use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_gm_def = torch.load(model_file_gm_def, map_location=device)
@@ -251,27 +244,26 @@ def load_models_and_weights(device, config):
             models['model_gm_def'] = model_gm_def
 
             # Load GM Classification Model
-            model_file_gm_cls = os.path.join(config.model_dir.strip(), config.model_file_gm_classification.strip())
-            if not os.path.exists(model_file_gm_cls):
-                print(f"GM Classification Model file '{model_file_gm_cls}' not found. Exiting.")
-                exit(1)
-            rand_num_gm_cls, epoch_gm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_gm_classification.strip())
-            print(f"GM Classification Model Random Number: {rand_num_gm_cls}, Epochs: {epoch_gm_cls}")
-            epoch_info['gm_cls_epoch'] = epoch_gm_cls
-            if model_type == 'csrvcv3':
-                model_gm_cls = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            elif model_type == 'csrvcv4':
-                model_gm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                       use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            checkpoint_gm_cls = torch.load(model_file_gm_cls, map_location=device)
-            if 'model_state_dict' in checkpoint_gm_cls:
-                model_gm_cls.load_state_dict(checkpoint_gm_cls['model_state_dict'])
+            if gm_cls_specified:
+                model_file_gm_cls = os.path.join(config.model_dir.strip(), config.model_file_gm_classification.strip())
+                if not os.path.exists(model_file_gm_cls):
+                    print(f"GM Classification Model file '{model_file_gm_cls}' not found. Exiting.")
+                    exit(1)
+                rand_num_gm_cls, epoch_gm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_gm_classification.strip())
+                print(f"GM Classification Model Random Number: {rand_num_gm_cls}, Epochs: {epoch_gm_cls}")
+                epoch_info['gm_cls_epoch'] = epoch_gm_cls
+                if model_type == 'csrvcv4':
+                    model_gm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                        use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+                checkpoint_gm_cls = torch.load(model_file_gm_cls, map_location=device)
+                if 'model_state_dict' in checkpoint_gm_cls:
+                    model_gm_cls.load_state_dict(checkpoint_gm_cls['model_state_dict'])
+                else:
+                    model_gm_cls.load_state_dict(checkpoint_gm_cls)
+                model_gm_cls.eval()
+                models['model_gm_cls'] = model_gm_cls
             else:
-                model_gm_cls.load_state_dict(checkpoint_gm_cls)
-            model_gm_cls.eval()
-            models['model_gm_cls'] = model_gm_cls
-
+                print('missing gm classification model')
         elif wm_model_specified and gm_model_specified:
             # Condition 'b'
             condition = 'b'
@@ -285,10 +277,7 @@ def load_models_and_weights(device, config):
             rand_num_wm, epoch_wm = extract_rand_num_and_epoch_from_filename(config.model_file_wm)
             print(f"WM Model Random Number: {rand_num_wm}, Epochs: {epoch_wm}")
             epoch_info['wm_epoch'] = epoch_wm
-            if model_type == 'csrvcv3':
-                model_wm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            elif model_type == 'csrvcv4':
+            if model_type == 'csrvcv4':
                 model_wm = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
                                    use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_wm = torch.load(model_file_wm, map_location=device)
@@ -307,10 +296,7 @@ def load_models_and_weights(device, config):
             rand_num_gm, epoch_gm = extract_rand_num_and_epoch_from_filename(config.model_file_gm)
             print(f"GM Model Random Number: {rand_num_gm}, Epochs: {epoch_gm}")
             epoch_info['gm_epoch'] = epoch_gm
-            if model_type == 'csrvcv3':
-                model_gm = CSRVCV3(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
-                                   use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
-            elif model_type == 'csrvcv4':
+            if model_type == 'csrvcv4':
                 model_gm = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
                                    use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
             checkpoint_gm = torch.load(model_file_gm, map_location=device)
@@ -387,7 +373,7 @@ if __name__ == '__main__':
     surf_hemi = config.surf_hemi           # 'lh', 'rh'
     device = config.device                 # e.g., 'cuda' or 'cpu'
     tag = config.tag                       # Identity of the experiment
-    model_type = config.model_type         # 'csrvcv3', 'csrvcv4', or 'cortexode'
+    model_type = config.model_type         # 'csrvcv4', or 'cortexode'
 
     C = config.dim_h                       # Hidden dimension of features
     K = config.kernel_size                 # Kernel / cube size
@@ -492,23 +478,25 @@ if __name__ == '__main__':
                     f_in_tensor = f_in_wm.unsqueeze(0).to(device)
 
                 if condition == 'a':
-                    if model_type in ['csrvcv3', 'csrvcv4']:
+                    if model_type in ['csrvcv4']:
                         # Deformation and Classification for WM
                         model_wm_def = models.get('model_wm_def', None)
                         model_wm_cls = models.get('model_wm_cls', None)
-                        if model_wm_def is not None and model_wm_cls is not None:
+                        if model_wm_def is not None:
                             model_wm_def.set_data(v_in_tensor, volume_in, f_in_tensor)
                             v_wm_pred = odeint(model_wm_def, v_in_tensor, t=T, method=solver,
                                                options=dict(step_size=step_size))[-1]
-
-                            model_wm_cls.set_data(v_wm_pred, volume_in, f=f_in_tensor)
-                            _dx = model_wm_cls(T, v_wm_pred)
-                            class_logits_wm = model_wm_cls.get_class_logits()
-                            # Add LogSoftmax
-                            class_logits_wm = class_logits_wm.unsqueeze(0)
-                            class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
-                            class_probs_wm = class_logits_wm.permute(0, 2, 1)
-                            class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                            if model_wm_cls is not None:
+                                model_wm_cls.set_data(v_wm_pred, volume_in, f=f_in_tensor)
+                                _dx = model_wm_cls(T, v_wm_pred)
+                                class_logits_wm = model_wm_cls.get_class_logits()
+                                # Add LogSoftmax
+                                class_logits_wm = class_logits_wm.unsqueeze(0)
+                                class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
+                                class_probs_wm = class_logits_wm.permute(0, 2, 1)
+                                class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                            else:
+                                class_wm_pred = None
                         else:
                             print(f"WM Deformation or Classification model not loaded for subject {subid}. Skipping.")
                             continue
@@ -522,19 +510,21 @@ if __name__ == '__main__':
 
                         model_gm_def = models.get('model_gm_def', None)
                         model_gm_cls = models.get('model_gm_cls', None)
-                        if model_gm_def is not None and model_gm_cls is not None:
+                        if model_gm_def is not None:
                             model_gm_def.set_data(v_gm_in, volume_in, f_in_tensor)
                             v_gm_pred = odeint(model_gm_def, v_gm_in, t=T, method=solver,
                                                options=dict(step_size=step_size/2))[-1]
-
-                            model_gm_cls.set_data(v_gm_pred, volume_in, f=f_in_tensor)
-                            _dx = model_gm_cls(T, v_gm_pred)
-                            class_logits_gm = model_gm_cls.get_class_logits()
-                            # Add LogSoftmax
-                            class_logits_gm = class_logits_gm.unsqueeze(0)
-                            class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
-                            class_probs_gm = class_logits_gm.permute(0, 2, 1)
-                            class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
+                            if  model_gm_cls is not None:
+                                model_gm_cls.set_data(v_gm_pred, volume_in, f=f_in_tensor)
+                                _dx = model_gm_cls(T, v_gm_pred)
+                                class_logits_gm = model_gm_cls.get_class_logits()
+                                # Add LogSoftmax
+                                class_logits_gm = class_logits_gm.unsqueeze(0)
+                                class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
+                                class_probs_gm = class_logits_gm.permute(0, 2, 1)
+                                class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
+                            else:
+                                class_gm_pred = None
                         else:
                             print(f"GM Deformation or Classification model not loaded for subject {subid}. Skipping.")
                             continue
@@ -545,7 +535,7 @@ if __name__ == '__main__':
 
 
                 elif condition == 'b':
-                    if model_type in ['csrvcv3', 'csrvcv4']:
+                    if model_type in ['csrvcv4']:
                         # Combined Deformation and Classification for WM
                         model_wm = models.get('model_wm', None)
                         if model_wm is not None:
@@ -681,7 +671,7 @@ if __name__ == '__main__':
 
                 # Save the predicted surface with annotations
                 try:
-                    if model_type in ['csrvcv3', 'csrvcv4']:
+                    if model_type in ['csrvcv4']:
                         save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
                         print(f"Saved predicted white matter surface with annotations for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf' and '.annot'")
 
