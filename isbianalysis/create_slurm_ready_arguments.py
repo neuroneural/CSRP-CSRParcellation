@@ -26,8 +26,8 @@ for model in models:
     model_dir = model['MODEL_DIR']
     reconstruction = model['reconstruction'] == 'True'
     classification = model['classification'] == 'True'
-    version = model['version']              # Added if needed
-    model_type = model['model_type']        # Added if needed
+    version = model.get('version', '')              # Use .get to handle missing fields
+    model_type = model.get('model_type', '')        # Use .get to handle missing fields
     # You can include additional fields if needed
 
     # Infer the case based on reconstruction and classification flags
@@ -147,15 +147,21 @@ with open(output_csv_file, 'w', newline='') as outfile:
                 output_row['gm_model_dir'] = gm_models['combined']['model_dir']
                 output_row['gm_model_file_combined'] = gm_models['combined']['model_file']
 
-        # Check if we have the required models for the case
+        # Optional: Log missing models
+        missing_models = []
         if case == 'a':
-            has_wm_models = (output_row['wm_model_file_deformation'] or output_row['wm_model_file_classification'])
-            has_gm_models = (output_row['gm_model_file_deformation'] or output_row['gm_model_file_classification'])
+            if not (output_row['wm_model_file_deformation'] or output_row['wm_model_file_classification']):
+                missing_models.append('WM deformation/classification')
+            if not (output_row['gm_model_file_deformation'] or output_row['gm_model_file_classification']):
+                missing_models.append('GM deformation/classification')
         elif case == 'b':
-            has_wm_models = output_row['wm_model_file_combined']
-            has_gm_models = output_row['gm_model_file_combined']
+            if not output_row['wm_model_file_combined']:
+                missing_models.append('WM combined')
+            if not output_row['gm_model_file_combined']:
+                missing_models.append('GM combined')
 
-        if has_wm_models and has_gm_models:
-            writer.writerow(output_row)
-        else:
-            print(f"Skipping incomplete case {key} due to missing models.")
+        if missing_models:
+            print(f"Warning: Missing models for case {key}: {', '.join(missing_models)}")
+
+        # Write the row to the CSV (including incomplete cases with empty fields)
+        writer.writerow(output_row)

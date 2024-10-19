@@ -3,17 +3,22 @@ import csv
 import re
 import os
 
-# Read the incomplete runs
-incomplete_df = pd.read_csv('incomplete_runs.csv')
+# Check if 'incomplete_runs.csv' exists
+if os.path.isfile('incomplete_runs.csv'):
+    # Read the incomplete runs
+    incomplete_df = pd.read_csv('incomplete_runs.csv')
 
-# Create a set of hyperparameter combinations to exclude (surf_type, surf_hemi, gat_layers, mode)
-incomplete_runs_set = set()
-for idx, row in incomplete_df.iterrows():
-    surf_type = row['surf_type']
-    surf_hemi = row['surf_hemi']
-    gat_layers = row['gat_layers']
-    mode = row['mode']
-    incomplete_runs_set.add((surf_type, surf_hemi, gat_layers, mode))
+    # Create a set of hyperparameter combinations to exclude (surf_type, surf_hemi, gat_layers, mode)
+    incomplete_runs_set = set()
+    for idx, row in incomplete_df.iterrows():
+        surf_type = row['surf_type']
+        surf_hemi = row['surf_hemi']
+        gat_layers = row['gat_layers']
+        mode = row['mode']
+        incomplete_runs_set.add((surf_type, surf_hemi, gat_layers, mode))
+else:
+    # If 'incomplete_runs.csv' does not exist, proceed without excluding any runs
+    incomplete_runs_set = set()
 
 # Read the CSV with two header rows
 df = pd.read_csv('validation_metrics.csv', header=[0, 1])
@@ -29,7 +34,7 @@ for index, row in df.iterrows():
     # Access the columns using the correct MultiIndex keys
     surf_type = row[('Unnamed: 0_level_0', 'surf_type')]
     surf_hemi = row[('Unnamed: 1_level_0', 'surf_hemi')]
-    gat_layers = row[('Unnamed: 2_level_0', 'GAT Layers')]
+    gat_layers = str(row[('Unnamed: 2_level_0', 'GAT Layers')])
 
     # Iterate over each mode
     for mode in ['_norecon_class', '_recon_noclass', '_recon_class']:
