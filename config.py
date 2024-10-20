@@ -36,6 +36,7 @@ def load_config():
     parser.add_argument('--continue', default="no", type=str, help="continue training [yes, no].")
     parser.add_argument('--start_epoch', default=1, type=int, help="start counting at 1 for start epochs.")
     parser.add_argument('--data_name', default="hcp", type=str, help="name of the dataset")
+    parser.add_argument('--data_usage', default="test", type=str, help="[train,test,valid]")
     parser.add_argument('--train_type', default="surf", type=str, help="type of training: [seg, surf, self_surf]")
     parser.add_argument('--surf_type', default="wm", type=str, help="type of the surface: [wm, gm]")
     parser.add_argument('--surf_hemi', default="lh", type=str, help="left or right hemisphere: [lh, rh]")

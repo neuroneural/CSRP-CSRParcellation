@@ -11,12 +11,12 @@ solver="$5"
 gat_heads="$6"
 wm_model_dir="$7"
 wm_model_file_combined="$8"
-wm_model_file_deformation="$9"
-wm_model_file_classification="${10}"
+model_file_wm_deformation="$9"
+model_file_wm_classification="${10}"
 gm_model_dir="${11}"
 gm_model_file_combined="${12}"
-gm_model_file_deformation="${13}"
-gm_model_file_classification="${14}"
+model_file_gm_deformation="${13}"
+model_file_gm_classification="${14}"
 
 model_type="${15}"
 
@@ -29,12 +29,12 @@ echo "solver: $solver"
 echo "gat_heads: $gat_heads"
 echo "wm_model_dir: $wm_model_dir"
 echo "wm_model_file_combined: $wm_model_file_combined"
-echo "wm_model_file_deformation: $wm_model_file_deformation"
-echo "wm_model_file_classification: $wm_model_file_classification"
+echo "model_file_wm_deformation: $model_file_wm_deformation"
+echo "model_file_wm_classification: $model_file_wm_classification"
 echo "gm_model_dir: $gm_model_dir"
 echo "gm_model_file_combined: $gm_model_file_combined"
-echo "gm_model_file_deformation: $gm_model_file_deformation"
-echo "gm_model_file_classification: $gm_model_file_classification"
+echo "model_file_gm_deformation: $model_file_gm_deformation"
+echo "model_file_gm_classification: $model_file_gm_classification"
 echo "model_type: $model_type"
 
 # Activate the Conda environment
@@ -54,17 +54,25 @@ python_command="python generateISBITestSurfaces.py \
     --solver '$solver' \
     --seg_model_file 'model_seg_hcp_Unet_200epochs.pt' \
     --result_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/result/' \
-    --wm_model_dir '$wm_model_dir' \
-    --gm_model_dir '$gm_model_dir' \
-    --model_type '$model_type'
+    --model_type '$model_type' \
+    --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/' \
+    --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/init/' \
+    --data_usage 'test' \
 "
 
-# Add case-specific arguments
-    python_command+=" --model_file_wm '$wm_model_file_combined' \
-                      --model_file_gm '$gm_model_file_combined' \
-                      --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/' \
-                      --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/init/' \
+if [ "$case" == "a" ] && [[ "$model_type"=="csrvcv4" ]]; then
+    python_command+=" --model_file_wm_deformation '$model_file_wm_deformation' \
+                      --model_file_wm_classification '$model_file_wm_classification' \
+                      --model_file_gm_deformation '$model_file_gm_deformation' \
+                      --model_file_gm_classification '$model_file_gm_classification'
     "
+    echo 'av4'
+elif [ "$case" == "b" ] && [[ "$model_type"=="csrvcv4" ]]; then
+    python_command+=" --model_file_wm '$wm_model_file_combined' \
+                      --model_file_gm '$gm_model_file_combined'
+    "
+    echo 'bv4'
+fi
 
 # Run the Python script
 echo "Running command:"

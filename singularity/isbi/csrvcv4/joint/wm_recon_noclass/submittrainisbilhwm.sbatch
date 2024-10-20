@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -n 1
-#SBATCH -c 4
-#SBATCH --mem=20g
+#SBATCH -c 16
+#SBATCH --mem=110g
 #SBATCH -p qTRDGPU
-#SBATCH --gres=gpu:A40:1
+#SBATCH --gres=gpu:A100:1
 #SBATCH -t 5-00:00
 #SBATCH -J csrvclh
 #SBATCH -e jobs/error%A_%a.err

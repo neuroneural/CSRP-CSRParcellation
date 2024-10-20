@@ -80,11 +80,12 @@ python trainCSRandParcellationResume.py \
     --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/init/' \
+    --model_file 'model_wm_hcp_rh_vc_v4_csrvc_layers8_sf0.1_heads1_30epochs_euler_recon_noclass_de0.1_415692.pt' \
     --data_name 'hcp' \
     --surf_hemi 'rh' \
     --surf_type 'wm' \
     --n_epochs 401 \
-    --start_epoch 1 \
+    --start_epoch 31 \
     --tag 'vc' \
     --device 'cuda' \
     --classification_loss_weight 1.0 \

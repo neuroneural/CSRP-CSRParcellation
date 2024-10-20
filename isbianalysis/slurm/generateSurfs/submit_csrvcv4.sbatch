@@ -47,8 +47,8 @@ fi
 
 # Read the CSV line into variables
 IFS=',' read -r case data_name surf_hemi gnn_layers solver gat_heads \
-wm_model_dir wm_model_file_combined wm_model_file_deformation wm_model_file_classification \
-gm_model_dir gm_model_file_combined gm_model_file_deformation gm_model_file_classification <<< "$LINE"
+wm_model_dir wm_model_file model_file_wm_deformation model_file_wm_classification \
+gm_model_dir gm_model_file model_file_gm_deformation model_file_gm_classification <<< "$LINE"
 
 # Debugging: Print out the variables to verify correct assignment
 echo "case: $case"
@@ -58,13 +58,13 @@ echo "gnn_layers: $gnn_layers"
 echo "solver: $solver"
 echo "gat_heads: $gat_heads"
 echo "wm_model_dir: $wm_model_dir"
-echo "wm_model_file_combined: $wm_model_file_combined"
-echo "wm_model_file_deformation: $wm_model_file_deformation"
-echo "wm_model_file_classification: $wm_model_file_classification"
+echo "wm_model_file: $wm_model_file"
+echo "model_file_wm_deformation: $model_file_wm_deformation"
+echo "model_file_wm_classification: $model_file_wm_classification"
 echo "gm_model_dir: $gm_model_dir"
-echo "gm_model_file_combined: $gm_model_file_combined"
-echo "gm_model_file_deformation: $gm_model_file_deformation"
-echo "gm_model_file_classification: $gm_model_file_classification"
+echo "gm_model_file: $gm_model_file"
+echo "model_file_gm_deformation: $model_file_gm_deformation"
+echo "model_file_gm_classification: $model_file_gm_classification"
 
 # Trim whitespace from variables (optional but recommended)
 case=$(echo "$case" | xargs)
@@ -74,13 +74,13 @@ gnn_layers=$(echo "$gnn_layers" | xargs)
 solver=$(echo "$solver" | xargs)
 gat_heads=$(echo "$gat_heads" | xargs)
 wm_model_dir=$(echo "$wm_model_dir" | xargs)
-wm_model_file_combined=$(echo "$wm_model_file_combined" | xargs)
-wm_model_file_deformation=$(echo "$wm_model_file_deformation" | xargs)
-wm_model_file_classification=$(echo "$wm_model_file_classification" | xargs)
+wm_model_file=$(echo "$wm_model_file" | xargs)
+model_file_wm_deformation=$(echo "$model_file_wm_deformation" | xargs)
+model_file_wm_classification=$(echo "$model_file_wm_classification" | xargs)
 gm_model_dir=$(echo "$gm_model_dir" | xargs)
-gm_model_file_combined=$(echo "$gm_model_file_combined" | xargs)
-gm_model_file_deformation=$(echo "$gm_model_file_deformation" | xargs)
-gm_model_file_classification=$(echo "$gm_model_file_classification" | xargs)
+gm_model_file=$(echo "$gm_model_file" | xargs)
+model_file_gm_deformation=$(echo "$model_file_gm_deformation" | xargs)
+model_file_gm_classification=$(echo "$model_file_gm_classification" | xargs)
 
 # Path to your shell script that activates the Conda environment and runs the Python script
 INNER_SHELL_SCRIPT="/cortexode/isbianalysis/slurm/generateSurfs/run_generate_surfacev3.sh"
@@ -97,13 +97,13 @@ singularity exec --nv \
         "$solver" \
         "$gat_heads" \
         "$wm_model_dir" \
-        "$wm_model_file_combined" \
-        "$wm_model_file_deformation" \
-        "$wm_model_file_classification" \
+        "$wm_model_file" \
+        "$model_file_wm_deformation" \
+        "$model_file_wm_classification" \
         "$gm_model_dir" \
-        "$gm_model_file_combined" \
-        "$gm_model_file_deformation" \
-        "$gm_model_file_classification" \
+        "$gm_model_file" \
+        "$model_file_gm_deformation" \
+        "$model_file_gm_classification" \
         "csrvcv4"
 
 # Wait for the singularity command to finish

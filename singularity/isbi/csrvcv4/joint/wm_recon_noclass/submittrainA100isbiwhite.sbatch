@@ -12,7 +12,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=washbee1@student.gsu.edu
 #SBATCH --oversubscribe
-#SBATCH --exclude=arctrddgxa001
+#SBATCH --exclude=arctrddgxa001,arctrddgxa004
 
 sleep 5s
 

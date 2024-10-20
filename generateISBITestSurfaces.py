@@ -158,6 +158,7 @@ def load_models_and_weights(device, config):
     C = config.dim_h
     K = config.kernel_size
     Q = config.n_scale
+    
     use_gcn = config.gnn == 'gcn'
 
     models = {}
@@ -171,12 +172,12 @@ def load_models_and_weights(device, config):
 
     if model_type in ['csrvcv4']:
         # Check for models specified in config
-        wm_model_specified = hasattr(config, 'model_file_wm') and config.model_file_wm is not None
-        gm_model_specified = hasattr(config, 'model_file_gm') and config.model_file_gm is not None
-        wm_def_specified = hasattr(config, 'model_file_wm_deformation') and config.model_file_wm_deformation is not None
-        wm_cls_specified = hasattr(config, 'model_file_wm_classification') and config.model_file_wm_classification is not None
-        gm_def_specified = hasattr(config, 'model_file_gm_deformation') and config.model_file_gm_deformation is not None
-        gm_cls_specified = hasattr(config, 'model_file_gm_classification') and config.model_file_gm_classification is not None
+        wm_model_specified = hasattr(config, 'model_file_wm') and config.model_file_wm is not None and len(config.model_file_wm.strip())>0
+        gm_model_specified = hasattr(config, 'model_file_gm') and config.model_file_gm is not None and len(config.model_file_gm.strip())>0
+        wm_def_specified = hasattr(config, 'model_file_wm_deformation') and config.model_file_wm_deformation is not None and len(config.model_file_wm_deformation.strip())>0
+        wm_cls_specified = hasattr(config, 'model_file_wm_classification') and config.model_file_wm_classification is not None and len(config.model_file_wm_classification.strip())>0
+        gm_def_specified = hasattr(config, 'model_file_gm_deformation') and config.model_file_gm_deformation is not None and len(config.model_file_gm_deformation.strip())>0
+        gm_cls_specified = hasattr(config, 'model_file_gm_classification') and config.model_file_gm_classification is not None and len(config.model_file_gm_classification.strip())>0
 
         if wm_def_specified and gm_def_specified:
             # Condition 'a'
@@ -403,10 +404,10 @@ if __name__ == '__main__':
     result_subdir = os.path.join(result_dir.strip(), folder_name.strip())
     os.makedirs(result_subdir, exist_ok=True)
 
-    wm_hemi_dir = os.path.join(result_subdir.strip(), 'wm', surf_hemi.strip())
-    gm_hemi_dir = os.path.join(result_subdir.strip(), 'gm', surf_hemi.strip())
-    wm_gt_dir = os.path.join(result_subdir.strip(), 'wm_gt', surf_hemi.strip())
-    gm_gt_dir = os.path.join(result_subdir.strip(), 'gm_gt', surf_hemi.strip())
+    wm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'wm', surf_hemi.strip())
+    gm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'gm', surf_hemi.strip())
+    wm_gt_dir = os.path.join(result_subdir.strip(),config.data_usage, 'wm_gt', surf_hemi.strip())
+    gm_gt_dir = os.path.join(result_subdir.strip(),config.data_usage, 'gm_gt', surf_hemi.strip())
 
     os.makedirs(wm_hemi_dir, exist_ok=True)
     os.makedirs(gm_hemi_dir, exist_ok=True)
@@ -419,11 +420,11 @@ if __name__ == '__main__':
     print(f"Saving GM ground truth to: {gm_gt_dir}")
 
     # ------ Prepare test data ------
-    testset = SegDataset(config=config, data_usage='test')
+    testset = SegDataset(config=config, data_usage=config.data_usage)
     testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
 
-    brain_dataset_wm = BrainDataset(config, data_usage='test', affCtab=True)
-    brain_dataset_gm = BrainDataset(config, data_usage='test', affCtab=True)
+    brain_dataset_wm = BrainDataset(config, data_usage=config.data_usage, affCtab=True)
+    brain_dataset_gm = BrainDataset(config, data_usage=config.data_usage, affCtab=True)
 
     T = torch.Tensor([0,1]).to(device)
 
