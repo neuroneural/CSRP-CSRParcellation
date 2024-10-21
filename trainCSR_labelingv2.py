@@ -236,7 +236,7 @@ def train_surfvc(config):
         subs = 0
         for idx, data in enumerate(trainloader):
             volume_in, v_gt, f_gt, labels, subid, color_map, v_in, f_in, nearest_labels, mask = data
-
+            
             optimizer.zero_grad()
 
             volume_in = volume_in.to(device).float()

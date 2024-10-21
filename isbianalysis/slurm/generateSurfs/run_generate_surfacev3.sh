@@ -57,7 +57,7 @@ python_command="python generateISBITestSurfaces.py \
     --model_type '$model_type' \
     --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/' \
     --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/init/' \
-    --data_usage 'test' \
+    --data_usage 'valid' \
 "
 
 if [ "$case" == "a" ] && [[ "$model_type"=="csrvcv4" ]]; then
