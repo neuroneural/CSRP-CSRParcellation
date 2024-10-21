@@ -58,7 +58,8 @@ class CSRVertexLabeledDatasetV3(Dataset):
         return len(self.subject_list)
     
     def __getitem__(self, idx):
-        subid = self.subject_list[idx]
+        subid = f'{self.subject_list[idx]}'
+        subid = re.sub(r'\D', '', subid)
         brain_arr, v_gt, f_gt, labels, ctab = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
         v_in, f_in = self._load_input_mesh(subid)
         
@@ -67,10 +68,16 @@ class CSRVertexLabeledDatasetV3(Dataset):
         
         normals = self._calculate_normals(v_in, f_in)
         gt_normals = self._calculate_normals(v_gt, f_gt)
+        
+        assert v_gt.ndim == 2,f'v_gt.shape'
         kdtree = KDTree(v_gt)
+        assert v_in.ndim == 2,f'v_in.shape'
         distances, indices = kdtree.query(v_in, k=1)
+        assert indices.shape[0]==v_in.shape[0],f'{indices.shape},{v_in.shape}'
         nearest_labels = labels[indices.flatten()]
-        mask = self._create_normal_mask(normals, gt_normals[indices.flatten()])
+        assert nearest_labels.shape[0] == v_in.shape[0],f'{nearest_label.shape},{v_in.shape}'
+        # mask = self._create_normal_mask(normals, gt_normals[indices.flatten()])
+        mask = None
         # Add print statements and assertions for new format variables
         assert brain_arr is not None, "brain_arr is None"
         assert v_gt is not None, "v_gt is None"
@@ -81,7 +88,7 @@ class CSRVertexLabeledDatasetV3(Dataset):
         assert v_in is not None, "v_in is None"
         assert f_in is not None, "f_in is None"
         assert nearest_labels is not None, "nearest_labels are None"
-        assert mask is not None, "mask is None"
+        # assert mask is not None, "mask is None"
         
         return VertexData(brain_arr, v_gt, f_gt, labels, subid, ctab, v_in, f_in, nearest_labels, mask).get_data()
     
@@ -148,30 +155,39 @@ class CSRVertexLabeledDatasetV3(Dataset):
 
     def _load_input_mesh(self, subid):
         try:
-            input_mesh_dir = self.config.parc_init_dir
             surf_type = self.config.surf_type  # surf_type from config
             surf_hemi = self.config.surf_hemi  # surf_hemi from config
+            if self.config.model_type in ['csrvc']:
+                input_mesh_dir = os.path.join(self.config.parc_init_dir,self.data_usage,surf_type,surf_hemi)
+            else:
+                input_mesh_dir = self.config.parc_init_dir
 
             # Get all available GNN layer files for the subject
-            if self.config.model_type2 !='baseline':
+            if self.config.model_type in ['csrvc']:
+                pattern = f'{self.config.data_name}_{surf_hemi}_{subid}_gnnlayers\d_{surf_type}_pred_epoch\d'
+            elif self.config.model_type2 !='baseline':#legacy
                 pattern = f'{subid}_{surf_type}_{surf_hemi}_source{self.config.model_type2}_gnnlayers\d_prediction'
             else:
                 self.config.gnn_layers=0 
                 pattern = f'{subid}_{surf_type}_{surf_hemi}_source{self.config.model_type2}_gnnlayers\d_prediction'
-            print('pattern',pattern)
             available_files = [f for f in os.listdir(input_mesh_dir) if re.match(pattern, f)]
             if not available_files:
                 raise FileNotFoundError(f"No input mesh files found for subject {subid} with surf_type {surf_type} and surf_hemi {surf_hemi}.")
 
             # Extract the layer numbers and randomly select one
-            gnn_layers = [int(re.search(r'gnnlayers(\d)', f).group(1)) for f in available_files]
+            gnn_layers = [int(re.search(r'gnnlayers(\d)', f).group(1)) for f in available_files]#This requires one hyperparam per folder!
+            epoch = [int(re.search(r'epoch(\d+)', f).group(1)) for f in available_files]#This requires one hyperparam per folder!
             selected_layer = random.choice(gnn_layers)
-            filename = f'{subid}_{surf_type}_{surf_hemi}_source{self.config.model_type2}_gnnlayers{selected_layer}_prediction'
+            selected_epoch = random.choice(epoch)
+            if self.config.model_type in ['csrvc']:
+                filename = f'{self.config.data_name}_{surf_hemi}_{subid}_gnnlayers{selected_layer}_{surf_type}_pred_epoch{selected_epoch}.surf'
+            else:    
+                filename = f'{subid}_{surf_type}_{surf_hemi}_source{self.config.model_type2}_gnnlayers{selected_layer}_prediction'
             input_mesh_path = os.path.join(input_mesh_dir, filename)
             
             v_in, f_in = nib.freesurfer.io.read_geometry(input_mesh_path)
             v_in, f_in = process_surface(v_in,f_in,self.config.data_name)
-        
+            assert v_in is not None, f"input path: {input_mesh_path}"
             return v_in, torch.from_numpy(f_in.astype(np.float32)).long().numpy()  # needed workaround.
         except Exception as e:
             print(f"Error loading input mesh for subject {subid}: {e}")

@@ -114,10 +114,7 @@ class BrainDataset(Dataset):
         a list of subject IDs for lazy loading.
         """
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted([
-            item for item in os.listdir(self.data_dir)
-            if os.path.isdir(os.path.join(self.data_dir, item))
-        ])
+        self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
         self.config = config
         self.data_usage = data_usage
         self.mse_threshold = config.mse_threshold
@@ -129,8 +126,8 @@ class BrainDataset(Dataset):
         return len(self.subject_list)
 
     def __getitem__(self, idx):
-        subid = self.subject_list[idx]
-
+        subid = f'{self.subject_list[idx]}'
+        subid = re.sub(r'\D', '', subid)
         # Load data for the subject identified by `subid`
         brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab = self._load_surf_data_for_subject(
             subid, self.config, self.data_usage

@@ -67,7 +67,7 @@ echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, 
 #--data_dir '/speedrun/isbi-data-dev/' \
     
 # Execute Python script with parameters
-python trainCSRandParcellationResume.py \
+python trainCSRandParcellationResume2.py \
     --model_type 'csrvc' \
     --patience 'standard' \
     --version $version \
