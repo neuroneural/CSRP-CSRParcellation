@@ -110,7 +110,7 @@ class CSRVertexLabeledDatasetV3(Dataset):
             brain_arr = process_volume(brain_arr, data_name)
                 
             assert brain_arr is not None, f"Failed to load brain_arr for subject {subid}"
-        
+            #TODO: NEED TO ADD LOADING FOR WHITE SURFACES
             if data_name == 'hcp':
                 v, f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial.deformed'))
             elif data_name == 'adni':
