@@ -112,16 +112,47 @@ class CSRVertexLabeledDatasetV3(Dataset):
             assert brain_arr is not None, f"Failed to load brain_arr for subject {subid}"
             #TODO: NEED TO ADD LOADING FOR WHITE SURFACES
             if data_name == 'hcp':
-                v, f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial.deformed'))
+                if surf_type == 'wm':
+                    v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                    os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.white.deformed')
+                )
+                elif surf_type == 'gm':
+                    v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                        os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial.deformed')
+                    )
+                else:
+                    raise ValueError(f"Unsupported surf_type: {surf_type}")
             elif data_name == 'adni':
-                v, f = nib.freesurfer.io.read_geometry(os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial'))
+                if surf_type == 'wm':
+                    v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                        os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.white')
+                    )
+                elif surf_type == 'gm':
+                    v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                        os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial')
+                    )
+                else:
+                    raise ValueError(f"Unsupported surf_type: {surf_type}")
             elif data_name == 'dhcp':
-                surf_gt = nib.load(os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_pial.surf.gii'))
-                v, f = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
-                v_tmp = np.ones([v.shape[0], 4])
-                v_tmp[:, :3] = v
-                v = v_tmp.dot(np.linalg.inv(brain.affine).T)[:, :3]
-            v, f = process_surface(v, f, data_name)
+                if surf_type == 'wm':
+                    surf_gt = nib.load(
+                        os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_wm.surf.gii')
+                    )
+                elif surf_type == 'gm':
+                    surf_gt = nib.load(
+                        os.path.join(data_dir, subid, f'{subid}_{surf_hemi}_pial.surf.gii')
+                    )
+                else:
+                    raise ValueError(f"Unsupported surf_type: {surf_type}")
+                v_gt, f_gt = surf_gt.agg_data('pointset'), surf_gt.agg_data('triangle')
+                # Apply affine transformation
+                v_tmp = np.ones([v_gt.shape[0], 4])
+                v_tmp[:, :3] = v_gt
+                v_gt = v_tmp.dot(np.linalg.inv(aff).T)[:, :3]
+            else:
+                raise ValueError(f"Unsupported data_name: {data_name}")
+            
+            v, f = process_surface(v_gt, f_gt, data_name)
             assert v is not None and f is not None, f"Failed to load vertices or faces for subject {subid}"
         
             labels, ctab = self._load_vertex_labels(atlas_dir, surf_hemi, config.atlas)
