@@ -169,7 +169,8 @@ def load_models_and_weights(device, config):
     if model_type not in ['csrvcv4', 'cortexode']:
         print(f"Unsupported model_type '{config.model_type}'. Supported types: 'csrvcv4', 'cortexode'. Exiting.")
         exit(1)
-
+    
+    
     if model_type in ['csrvcv4']:
         # Check for models specified in config
         wm_model_specified = hasattr(config, 'model_file_wm') and config.model_file_wm is not None and len(config.model_file_wm.strip())>0
@@ -386,36 +387,41 @@ if __name__ == '__main__':
     rho = config.rho                       # Inflation scale
 
     # ------ Load the segmentation network ------
+    models = {}
+    
     if config.seg_model_file is not None:
         segnet = Unet(c_in=1, c_out=3).to(device)
         print("segnet file is located", os.path.join(config.model_dir.strip(), config.seg_model_file.strip()))
         segnet.load_state_dict(torch.load(os.path.join(config.model_dir.strip(), config.seg_model_file.strip()), map_location=device))
         segnet.eval()
         print(f"Loaded segmentation model from '{config.seg_model_file}'")
+        models, condition, epoch_info = load_models_and_weights(device, config)
+        print("models",models)
+        wm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'wm', surf_hemi.strip())
+        gm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'gm', surf_hemi.strip())
+        os.makedirs(wm_hemi_dir, exist_ok=True)
+        os.makedirs(gm_hemi_dir, exist_ok=True)
+        print(f"Saving WM results to: {wm_hemi_dir}")
+        print(f"Saving GM results to: {gm_hemi_dir}")
+    
     else:
-        print("No segmentation model file provided. Exiting.")
-        exit(1)
-
+        print("No segmentation model file provided. Printing groung truths only.")
+        
+    
     # ------ Load the models and infer the condition ------
-    models, condition, epoch_info = load_models_and_weights(device, config)
-    print("models",models)
     # ------ Create result subdirectories based on condition ------
+    if config.seg_model_file is None:
+        condition = 'c_gts'
     folder_name = f"{condition}"
     result_subdir = os.path.join(result_dir.strip(), folder_name.strip())
     os.makedirs(result_subdir, exist_ok=True)
 
-    wm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'wm', surf_hemi.strip())
-    gm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'gm', surf_hemi.strip())
     wm_gt_dir = os.path.join(result_subdir.strip(),config.data_usage, 'wm_gt', surf_hemi.strip())
     gm_gt_dir = os.path.join(result_subdir.strip(),config.data_usage, 'gm_gt', surf_hemi.strip())
 
-    os.makedirs(wm_hemi_dir, exist_ok=True)
-    os.makedirs(gm_hemi_dir, exist_ok=True)
     os.makedirs(wm_gt_dir, exist_ok=True)
     os.makedirs(gm_gt_dir, exist_ok=True)
 
-    print(f"Saving WM results to: {wm_hemi_dir}")
-    print(f"Saving GM results to: {gm_hemi_dir}")
     print(f"Saving WM ground truth to: {wm_gt_dir}")
     print(f"Saving GM ground truth to: {gm_gt_dir}")
 
@@ -423,9 +429,13 @@ if __name__ == '__main__':
     testset = SegDataset(config=config, data_usage=config.data_usage)
     testloader = DataLoader(testset, batch_size=1, shuffle=False, num_workers=4)
 
-    brain_dataset_wm = BrainDataset(config, data_usage=config.data_usage, affCtab=True)
-    brain_dataset_gm = BrainDataset(config, data_usage=config.data_usage, affCtab=True)
-
+    config_wm = copy.deepcopy(config)
+    config_wm.surf_type='wm'
+    config_gm = copy.deepcopy(config)
+    config_gm.surf_type='gm'
+    brain_dataset_wm = BrainDataset(config_wm, data_usage=config.data_usage, affCtab=True)
+    brain_dataset_gm = BrainDataset(config_gm, data_usage=config.data_usage, affCtab=True)
+    
     T = torch.Tensor([0,1]).to(device)
 
     for batch_idx, data in enumerate(testloader):
@@ -441,11 +451,8 @@ if __name__ == '__main__':
             assert subid == sub_id_wm, f"Mismatch in WM subject IDs: {subid} vs {sub_id_wm}"
             assert subid == sub_id_gm, f"Mismatch in GM subject IDs: {subid} vs {sub_id_gm}"
         except IndexError:
-            print(f"BrainDataset index {batch_idx} out of range. Skipping subject {subid}.")
-            continue
-        except AssertionError as ae:
-            print(f"Assertion error: {ae}. Skipping subject {subid}.")
-            continue
+            print(f"BrainDataset index {batch_idx} out of range.")
+            
 
         # ------ Predict segmentation -------
         if config.seg_model_file is not None:
@@ -457,15 +464,13 @@ if __name__ == '__main__':
                 elif surf_hemi == 'rh':
                     seg = (seg_pred == 2).cpu().numpy()  # rh
                 else:
-                    print(f"Unknown hemisphere '{surf_hemi}'. Skipping subject {subid}.")
-                    continue
-
+                    print(f"Unknown hemisphere '{surf_hemi}'.")
+        
             # ------ Extract initial surface -------
             try:
                 v_in, f_in = seg2surf(seg, data_name, sigma=0.5, alpha=16, level=0.8, n_smooth=2, device=device)
             except ValueError as e:
-                print(f"Error in seg2surf for subject {subid}: {e}. Skipping.")
-                continue
+                print(f"Error in seg2surf for subject {subid}: {e}.")
 
         # ------ Predict the surface using the model -------
         if test_type in ['pred', 'eval']:
@@ -474,10 +479,7 @@ if __name__ == '__main__':
                 if config.seg_model_file is not None:
                     v_in_tensor = torch.Tensor(v_in).float().unsqueeze(0).to(device)
                     f_in_tensor = torch.LongTensor(f_in).unsqueeze(0).to(device)
-                else:
-                    v_in_tensor = v_in_wm.unsqueeze(0).to(device)
-                    f_in_tensor = f_in_wm.unsqueeze(0).to(device)
-
+                
                 if condition == 'a':
                     if model_type in ['csrvcv4']:
                         # Deformation and Classification for WM
@@ -496,18 +498,16 @@ if __name__ == '__main__':
                                 class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
                                 class_probs_wm = class_logits_wm.permute(0, 2, 1)
                                 class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                                # Inflate and smooth for grey matter
+                                v_gm_in = v_wm_pred.clone()
+                                for i in range(n_inflate):
+                                    v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
+                                    n_in = compute_normal(v_gm_in, f_in_tensor)
+                                    v_gm_in += rho * n_in        
                             else:
                                 class_wm_pred = None
                         else:
-                            print(f"WM Deformation or Classification model not loaded for subject {subid}. Skipping.")
-                            continue
-
-                        # Inflate and smooth for grey matter
-                        v_gm_in = v_wm_pred.clone()
-                        for i in range(n_inflate):
-                            v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
-                            n_in = compute_normal(v_gm_in, f_in_tensor)
-                            v_gm_in += rho * n_in
+                            print(f"WM Deformation or Classification model not loaded for subject {subid}.")
 
                         model_gm_def = models.get('model_gm_def', None)
                         model_gm_cls = models.get('model_gm_cls', None)
@@ -527,14 +527,10 @@ if __name__ == '__main__':
                             else:
                                 class_gm_pred = None
                         else:
-                            print(f"GM Deformation or Classification model not loaded for subject {subid}. Skipping.")
-                            continue
-
+                            print(f"GM Deformation or Classification model not loaded for subject {subid}.")
+                            
                     else:
-                        print(f"Unsupported model architecture '{model_type}' for condition 'a'. Skipping.")
-                        continue
-
-
+                        print(f"Unsupported model architecture '{model_type}' for condition 'a'.")
                 elif condition == 'b':
                     if model_type in ['csrvcv4']:
                         # Combined Deformation and Classification for WM
@@ -552,17 +548,17 @@ if __name__ == '__main__':
                             class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
                             class_probs_wm = class_logits_wm.permute(0, 2, 1)
                             class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                            v_gm_in = v_wm_pred.clone()
+                            for i in range(n_inflate):
+                                v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
+                                n_in = compute_normal(v_gm_in, f_in_tensor)
+                                v_gm_in += rho * n_in
+
                         else:
                             print(f"WM Model not loaded for subject {subid}. Skipping.")
-                            continue
-
+                            
                         # Inflate and smooth for grey matter
-                        v_gm_in = v_wm_pred.clone()
-                        for i in range(n_inflate):
-                            v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
-                            n_in = compute_normal(v_gm_in, f_in_tensor)
-                            v_gm_in += rho * n_in
-
+                        
                         model_gm = models.get('model_gm', None)
                         if model_gm is not None:
                             model_gm.set_data(v_gm_in, volume_in, f_in_tensor)
@@ -578,12 +574,10 @@ if __name__ == '__main__':
                             class_probs_gm = class_logits_gm.permute(0, 2, 1)
                             class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
                         else:
-                            print(f"GM Model not loaded for subject {subid}. Skipping.")
-                            continue
+                            print(f"GM Model not loaded for subject {subid}.")
 
                     else:
-                        print(f"Unsupported model architecture '{model_type}' for condition 'b'. Skipping.")
-                        continue
+                        print(f"Unsupported model architecture '{model_type}' for condition 'b'.")
 
                 elif condition == 'cortexode':
                     if model_type == 'cortexode':
@@ -593,17 +587,15 @@ if __name__ == '__main__':
                             model_wm.set_data(v_in_tensor, volume_in)
                             v_wm_pred = odeint(model_wm, v_in_tensor, t=T, method=solver,
                                                options=dict(step_size=step_size))[-1]
+                            # Inflate and smooth for GM
+                            v_gm_in = v_wm_pred.clone()
+                            for i in range(n_inflate):
+                                v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
+                                n_in = compute_normal(v_gm_in, f_in_tensor)
+                                v_gm_in += rho * n_in
                         else:
-                            print(f"No CortexODE WM model loaded for subject {subid}. Skipping.")
-                            continue
-
-                        # Inflate and smooth for GM
-                        v_gm_in = v_wm_pred.clone()
-                        for i in range(n_inflate):
-                            v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
-                            n_in = compute_normal(v_gm_in, f_in_tensor)
-                            v_gm_in += rho * n_in
-
+                            print(f"No CortexODE WM model loaded for subject {subid}.")
+                            
                         # Deformation using CortexODE for GM
                         model_gm = models.get('model_gm', None)
                         if model_gm is not None:
@@ -612,88 +604,89 @@ if __name__ == '__main__':
                                                options=dict(step_size=step_size/2))[-1]
                         else:
                             print(f"No CortexODE GM model loaded for subject {subid}. Skipping.")
-                            continue
-
+                            
                         # No classification for CortexODE
                         class_wm_pred = None
                         class_gm_pred = None
 
                     else:
                         print(f"Unsupported model architecture '{model_type}' for condition '{condition}'. Skipping.")
-                        continue
-
+                
+                elif config.seg_model_file is None:
+                        print('print ground truth')
                 else:
                     print(f"Unsupported condition '{condition}'. Skipping subject {subid}.")
-                    continue
 
-                # Convert predictions to NumPy
-                v_wm_pred_np = v_wm_pred[0].cpu().numpy()
-                f_wm_pred_np = f_in_tensor[0].cpu().numpy()
-                v_gm_pred_np = v_gm_pred[0].cpu().numpy()
-                f_gm_pred_np = f_in_tensor[0].cpu().numpy()
+                if config.seg_model_file is not None:
+                    # Convert predictions to NumPy
+                    v_wm_pred_np = v_wm_pred[0].cpu().numpy()
+                    f_wm_pred_np = f_in_tensor[0].cpu().numpy()
+                    v_gm_pred_np = v_gm_pred[0].cpu().numpy()
+                    f_gm_pred_np = f_in_tensor[0].cpu().numpy()
 
-                # Map the surface coordinate from [-1,1] to its original space
-                v_wm_pred_mapped, f_wm_pred_mapped = process_surface_inverse(v_wm_pred_np, f_wm_pred_np, data_name)
-                v_gm_pred_mapped, f_gm_pred_mapped = process_surface_inverse(v_gm_pred_np, f_gm_pred_np, data_name)
+                    # Map the surface coordinate from [-1,1] to its original space
+                    v_wm_pred_mapped, f_wm_pred_mapped = process_surface_inverse(v_wm_pred_np, f_wm_pred_np, data_name)
+                    v_gm_pred_mapped, f_gm_pred_mapped = process_surface_inverse(v_gm_pred_np, f_gm_pred_np, data_name)
 
-                # Map ground truth surfaces to original space
-                v_gt_wm_np = v_gt_wm.cpu().numpy()
-                f_gt_wm_np = f_gt_wm.cpu().numpy()
-                v_gt_gm_np = v_gt_gm.cpu().numpy()
-                f_gt_gm_np = f_gt_gm.cpu().numpy()
-
-                v_gt_wm_mapped, f_gt_wm_mapped = process_surface_inverse(v_gt_wm_np, f_gt_wm_np, data_name)
-                v_gt_gm_mapped, f_gt_gm_mapped = process_surface_inverse(v_gt_gm_np, f_gt_gm_np, data_name)
-
-                # ------ Save predicted surfaces and annotations -------
-                # Define the save paths, including epoch information
-                if condition == 'a':
-                    wm_epoch = epoch_info.get('wm_def_epoch', None)
-                    gm_epoch = epoch_info.get('gm_def_epoch', None)
-                elif condition == 'b':
-                    wm_epoch = epoch_info.get('wm_epoch', None)
-                    gm_epoch = epoch_info.get('gm_epoch', None)
-                elif condition == 'cortexode':
-                    wm_epoch = epoch_info.get('wm_epoch', None)
-                    gm_epoch = epoch_info.get('gm_epoch', None)
-                else:
-                    wm_epoch = None
-                    gm_epoch = None
-
-                pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_wm_pred'
-                pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_gm_pred'
-                gt_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_wm_gt'
-                gt_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gm_gt'
-
-                pred_surface_path_wm = os.path.join(wm_hemi_dir.strip(), pred_surface_basename_wm.strip())
-                pred_surface_path_gm = os.path.join(gm_hemi_dir.strip(), pred_surface_basename_gm.strip())
-                gt_surface_path_wm = os.path.join(wm_gt_dir.strip(), gt_surface_basename_wm.strip())
-                gt_surface_path_gm = os.path.join(gm_gt_dir.strip(), gt_surface_basename_gm.strip())
-
-                # Save the predicted surface with annotations
-                try:
-                    if model_type in ['csrvcv4']:
-                        save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
-                        print(f"Saved predicted white matter surface with annotations for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf' and '.annot'")
-
-                        save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred, ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=gm_epoch)
-                        print(f"Saved predicted grey matter surface with annotations for {subid} at '{pred_surface_path_gm}_epoch{gm_epoch}.surf' and '.annot'")
-
-                    elif model_type == 'cortexode':
-                        # Save without annotations
-                        save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
-                        print(f"Saved predicted white matter surface for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf'")
-
-                        save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=gm_epoch)
-                        print(f"Saved predicted grey matter surface for {subid} at '{pred_surface_path_gm}_epoch{gm_epoch}.surf'")
+                    # ------ Save predicted surfaces and annotations -------
+                    # Define the save paths, including epoch information
+                    if condition == 'a':
+                        wm_epoch = epoch_info.get('wm_def_epoch', None)
+                        gm_epoch = epoch_info.get('gm_def_epoch', None)
+                    elif condition == 'b':
+                        wm_epoch = epoch_info.get('wm_epoch', None)
+                        gm_epoch = epoch_info.get('gm_epoch', None)
+                    elif condition == 'cortexode':
+                        wm_epoch = epoch_info.get('wm_epoch', None)
+                        gm_epoch = epoch_info.get('gm_epoch', None)
                     else:
-                        print(f"Unsupported model architecture '{model_type}'. Skipping saving predicted surfaces.")
-                except Exception as e:
-                    print(f"Error saving predicted mesh for subject {subid}: {e}. Skipping.")
-                    continue
+                        wm_epoch = None
+                        gm_epoch = None
 
+                    pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_wm_pred'
+                    pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_gm_pred'
+                
+                    pred_surface_path_wm = os.path.join(wm_hemi_dir.strip(), pred_surface_basename_wm.strip())
+                    pred_surface_path_gm = os.path.join(gm_hemi_dir.strip(), pred_surface_basename_gm.strip())
+                
+                    # Save the predicted surface with annotations
+                    try:
+                        if model_type in ['csrvcv4']:
+                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
+                            print(f"Saved predicted white matter surface with annotations for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf' and '.annot'")
+
+                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred, ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=gm_epoch)
+                            print(f"Saved predicted grey matter surface with annotations for {subid} at '{pred_surface_path_gm}_epoch{gm_epoch}.surf' and '.annot'")
+
+                        elif model_type == 'cortexode':
+                            # Save without annotations
+                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
+                            print(f"Saved predicted white matter surface for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf'")
+
+                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=gm_epoch)
+                            print(f"Saved predicted grey matter surface for {subid} at '{pred_surface_path_gm}_epoch{gm_epoch}.surf'")
+                        else:
+                            print(f"Unsupported model architecture '{model_type}'. Skipping saving predicted surfaces.")
+                    except Exception as e:
+                        print(f"Error saving predicted mesh for subject {subid}: {e}.")
+                print(f'saving surfaces for {subid}')
                 # ------ Save ground truth surfaces -------
                 try:
+                    gt_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_wm_gt'
+                    gt_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gm_gt'
+
+                    gt_surface_path_wm = os.path.join(wm_gt_dir.strip(), gt_surface_basename_wm.strip())
+                    gt_surface_path_gm = os.path.join(gm_gt_dir.strip(), gt_surface_basename_gm.strip())
+
+                    # Map ground truth surfaces to original space
+                    v_gt_wm_np = v_gt_wm.cpu().numpy()
+                    f_gt_wm_np = f_gt_wm.cpu().numpy()
+                    v_gt_gm_np = v_gt_gm.cpu().numpy()
+                    f_gt_gm_np = f_gt_gm.cpu().numpy()
+
+                    v_gt_wm_mapped, f_gt_wm_mapped = process_surface_inverse(v_gt_wm_np, f_gt_wm_np, data_name)
+                    v_gt_gm_mapped, f_gt_gm_mapped = process_surface_inverse(v_gt_gm_np, f_gt_gm_np, data_name)
+
                     # Save WM ground truth surface
                     save_mesh_with_annotations(v_gt_wm_mapped, f_gt_wm_mapped, labels=labels_wm.cpu().numpy(), ctab=ctab_wm, save_path_fs=gt_surface_path_wm, data_name=data_name)
                     print(f"Saved ground truth white matter surface for {subid} at '{gt_surface_path_wm}'")
@@ -702,7 +695,6 @@ if __name__ == '__main__':
                     save_mesh_with_annotations(v_gt_gm_mapped, f_gt_gm_mapped, labels=labels_gm.cpu().numpy(), ctab=ctab_gm, save_path_fs=gt_surface_path_gm, data_name=data_name)
                     print(f"Saved ground truth grey matter surface for {subid} at '{gt_surface_path_gm}'")
                 except Exception as e:
-                    print(f"Error saving ground truth mesh for subject {subid}: {e}. Skipping.")
-                    continue
+                    print(f"Error saving ground truth mesh for subject {subid}: {e}.")
 
     print("Processing completed.")
