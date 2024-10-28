@@ -39,5 +39,4 @@ pid4=$!  # Store the process ID of the second process
 wait $pid3
 wait $pid4
 
-
 sleep 10s

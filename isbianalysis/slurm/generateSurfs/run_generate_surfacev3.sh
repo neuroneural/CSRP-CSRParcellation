@@ -53,6 +53,7 @@ python_command="python generateISBITestSurfaces.py \
     --gat_heads '$gat_heads' \
     --solver '$solver' \
     --result_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/result/' \
+    --result_subdir $case \
     --model_type '$model_type' \
     --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/' \
     --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/init/' \

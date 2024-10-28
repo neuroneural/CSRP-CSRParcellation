@@ -150,7 +150,7 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, gt_subject_bas
     # Paths to the required data
     freesurfer_subject_path = os.path.join(gt_subject_base_path, subj_id)
     fastsurfer_subject_path = os.path.join(fastsurfer_subject_base_path, subj_id, subj_id)
-
+    
     hemispheres = ['lh', 'rh']
     for surf_type in ['pial','white']:
         for hemi in hemispheres:

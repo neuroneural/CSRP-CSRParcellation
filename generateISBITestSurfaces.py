@@ -74,7 +74,7 @@ def seg2surf(seg, data_name='hcp', sigma=0.5, alpha=16, level=0.8, n_smooth=2, d
 
     return v_mc, f_mc
 
-def save_mesh_with_annotations(verts, faces, labels=None, ctab=None, save_path_fs=None, data_name='hcp', epoch_info=None):
+def save_mesh_with_annotations(verts, faces, labels=None, ctab=None, save_path_fs=None, data_name='hcp', epoch_info=None,epoch_info_cls=None):
     """
     Save the mesh with annotations using nibabel.
 
@@ -105,8 +105,9 @@ def save_mesh_with_annotations(verts, faces, labels=None, ctab=None, save_path_f
 
     # Modify save paths to include epoch information
     if epoch_info is not None:
-        surf_path = f"{save_path_fs}_epoch{epoch_info}.surf"
-        annot_path = f"{save_path_fs}_epoch{epoch_info}.annot"
+        assert epoch_info_cls is not None, "need to set both"
+        surf_path = f"{save_path_fs}_epochdef{epoch_info}.surf"
+        annot_path = f"{save_path_fs}_epochdef{epoch_info}_epochcls{epoch_info_cls}.annot"
     else:
         surf_path = f"{save_path_fs}.surf"
         annot_path = f"{save_path_fs}.annot"
@@ -277,8 +278,12 @@ def load_models_and_weights(device, config):
                 print(f"WM Model file '{model_file_wm}' not found. Exiting.")
                 exit(1)
             rand_num_wm, epoch_wm = extract_rand_num_and_epoch_from_filename(config.model_file_wm)
+            epoch_wm_def = epoch_wm
+            epoch_wm_cls = epoch_wm
             print(f"WM Model Random Number: {rand_num_wm}, Epochs: {epoch_wm}")
-            epoch_info['wm_epoch'] = epoch_wm
+            epoch_info['wm_def_epoch'] = epoch_wm
+            epoch_info['wm_cls_epoch'] = epoch_wm
+            
             if model_type == 'csrvcv4':
                 model_wm = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
                                    use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
@@ -296,8 +301,12 @@ def load_models_and_weights(device, config):
                 print(f"GM Model file '{model_file_gm}' not found. Exiting.")
                 exit(1)
             rand_num_gm, epoch_gm = extract_rand_num_and_epoch_from_filename(config.model_file_gm)
+            epoch_gm_def = epoch_gm
+            epoch_gm_cls = epoch_gm
+            
             print(f"GM Model Random Number: {rand_num_gm}, Epochs: {epoch_gm}")
-            epoch_info['gm_epoch'] = epoch_gm
+            epoch_info['gm_def_epoch'] = epoch_gm
+            epoch_info['gm_cls_epoch'] = epoch_gm
             if model_type == 'csrvcv4':
                 model_gm = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
                                    use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
@@ -325,7 +334,8 @@ def load_models_and_weights(device, config):
                 exit(1)
             rand_num_wm, epoch_wm = extract_rand_num_and_epoch_from_filename(config.model_file_wm)
             print(f"CortexODE WM Model Random Number: {rand_num_wm}, Epochs: {epoch_wm}")
-            epoch_info['wm_epoch'] = epoch_wm
+            epoch_info['epoch_wm_def'] = epoch_wm
+            epoch_info['epoch_wm_cls'] = None#TODO
             model_wm = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
             checkpoint_wm = torch.load(model_file_wm, map_location=device)
             if 'model_state_dict' in checkpoint_wm:
@@ -345,7 +355,9 @@ def load_models_and_weights(device, config):
                 exit(1)
             rand_num_gm, epoch_gm = extract_rand_num_and_epoch_from_filename(config.model_file_gm)
             print(f"CortexODE GM Model Random Number: {rand_num_gm}, Epochs: {epoch_gm}")
-            epoch_info['gm_epoch'] = epoch_gm
+            epoch_info['epoch_gm_def'] = epoch_gm
+            epoch_info['epoch_gm_cls'] = None#TODO
+            
             model_gm = CortexODE(dim_in=3, dim_h=C, kernel_size=K, n_scale=Q).to(device)
             checkpoint_gm = torch.load(model_file_gm, map_location=device)
             if 'model_state_dict' in checkpoint_gm:
@@ -385,10 +397,12 @@ if __name__ == '__main__':
     solver = config.solver                 # ODE solver (e.g., 'euler', 'rk4')
     n_inflate = config.n_inflate           # Inflation iterations
     rho = config.rho                       # Inflation scale
+    result_subdir = config.result_subdir   #for each case
 
     # ------ Load the segmentation network ------
     models = {}
     
+    print('seg',config.seg_model_file)
     if config.seg_model_file is not None:
         segnet = Unet(c_in=1, c_out=3).to(device)
         print("segnet file is located", os.path.join(config.model_dir.strip(), config.seg_model_file.strip()))
@@ -397,8 +411,8 @@ if __name__ == '__main__':
         print(f"Loaded segmentation model from '{config.seg_model_file}'")
         models, condition, epoch_info = load_models_and_weights(device, config)
         print("models",models)
-        wm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'wm', surf_hemi.strip())
-        gm_hemi_dir = os.path.join(result_subdir.strip(),config.data_usage, 'gm', surf_hemi.strip())
+        wm_hemi_dir = os.path.join(config.result_dir,result_subdir.strip(),config.data_usage, 'wm', surf_hemi.strip())
+        gm_hemi_dir = os.path.join(config.result_dir,result_subdir.strip(),config.data_usage, 'gm', surf_hemi.strip())
         os.makedirs(wm_hemi_dir, exist_ok=True)
         os.makedirs(gm_hemi_dir, exist_ok=True)
         print(f"Saving WM results to: {wm_hemi_dir}")
@@ -630,19 +644,7 @@ if __name__ == '__main__':
 
                     # ------ Save predicted surfaces and annotations -------
                     # Define the save paths, including epoch information
-                    if condition == 'a':
-                        wm_epoch = epoch_info.get('wm_def_epoch', None)
-                        gm_epoch = epoch_info.get('gm_def_epoch', None)
-                    elif condition == 'b':
-                        wm_epoch = epoch_info.get('wm_epoch', None)
-                        gm_epoch = epoch_info.get('gm_epoch', None)
-                    elif condition == 'cortexode':
-                        wm_epoch = epoch_info.get('wm_epoch', None)
-                        gm_epoch = epoch_info.get('gm_epoch', None)
-                    else:
-                        wm_epoch = None
-                        gm_epoch = None
-
+                    
                     pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_wm_pred'
                     pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_gm_pred'
                 
@@ -650,21 +652,20 @@ if __name__ == '__main__':
                     pred_surface_path_gm = os.path.join(gm_hemi_dir.strip(), pred_surface_basename_gm.strip())
                 
                     # Save the predicted surface with annotations
+                    print('epoch_info',epoch_info)
                     try:
                         if model_type in ['csrvcv4']:
-                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
-                            print(f"Saved predicted white matter surface with annotations for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf' and '.annot'")
-
-                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred, ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=gm_epoch)
-                            print(f"Saved predicted grey matter surface with annotations for {subid} at '{pred_surface_path_gm}_epoch{gm_epoch}.surf' and '.annot'")
-
+                            
+                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=epoch_info.get('wm_def_epoch', None),epoch_info_cls = epoch_info.get('wm_cls_epoch', None))
+                            
+                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred, ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=epoch_info.get('gm_def_epoch', None),epoch_info_cls = epoch_info.get('gm_cls_epoch', None))
+                            
                         elif model_type == 'cortexode':
                             # Save without annotations
-                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=wm_epoch)
-                            print(f"Saved predicted white matter surface for {subid} at '{pred_surface_path_wm}_epoch{wm_epoch}.surf'")
-
-                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=gm_epoch)
-                            print(f"Saved predicted grey matter surface for {subid} at '{pred_surface_path_gm}_epoch{gm_epoch}.surf'")
+                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=epoch_info.get('wm_def_epoch', None),epoch_info_cls=epoch_info.get('wm_cls_epoch', None))
+                            
+                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=epoch_info.get('gm_def_epoch', None),epoch_info_cls=epoch_info.get('gm_cls_epoch', None))
+                            
                         else:
                             print(f"Unsupported model architecture '{model_type}'. Skipping saving predicted surfaces.")
                     except Exception as e:

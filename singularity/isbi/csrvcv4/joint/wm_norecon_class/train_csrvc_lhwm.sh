@@ -80,6 +80,7 @@ python trainCSRandParcellationResume.py \
     --data_dir '/speedrun/cortexode-data-rp/' \
     --model_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/model/' \
     --init_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/init/' \
+    --model_file 'model_wm_hcp_lh_vc_v4_csrvc_layers8_sf0.1_heads1_310epochs_euler_norecon_class_de0.1_483397.pt' \
     --data_name 'hcp' \
     --surf_hemi 'lh' \
     --surf_type 'wm' \

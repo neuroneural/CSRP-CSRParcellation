@@ -466,7 +466,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract Validation Metrics with Epoch Thresholds")
 
     # Add command-line arguments
-    parser.add_argument('--max_epoch_norecon_class', type=int, default=100, help="Max epoch for _norecon_class mode")
+    parser.add_argument('--max_epoch_norecon_class', type=int, default=400, help="Max epoch for _norecon_class mode")
     parser.add_argument('--max_epoch_recon_noclass', type=int, default=100, help="Max epoch for _recon_noclass mode")
     parser.add_argument('--max_epoch_recon_class', type=int, default=100, help="Max epoch for _recon_class mode")
 
