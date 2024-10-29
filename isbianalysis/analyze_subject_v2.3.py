@@ -43,7 +43,7 @@ def load_freesurfer_surface_and_labels(surface_path,annot_path = None):
         if annot_path is None:
             
             pred_surf_dir = os.path.dirname(surface_path)
-
+            
             # Load the annotation file with the same basename but .annot extension
             # annot_path = os.path.splitext(surface_path)[0] + '.annot'
             pred_files = [f for f in os.listdir(pred_surf_dir) if f.endswith('.annot') and (subj_id in f)]
@@ -73,7 +73,10 @@ def load_freesurfer_surface_and_labels(surface_path,annot_path = None):
 
         print('reading annot_path',annot_path)
         
-        labels, ctab, names = nib.freesurfer.read_annot(annot_path)
+        if annot_path != 'cortexode':
+            labels, ctab, names = nib.freesurfer.read_annot(annot_path)
+        else:
+            labels = None
         return mesh, labels
         
     except Exception as e:
@@ -179,7 +182,7 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
         print(f'Hemisphere: {hemi}')
         for surf_type in surf_types:
             print(f'Surface Type: {surf_type}')
-            if framework_name.lower() in ['csrp']:
+            if framework_name.lower() in ['csrp','cortexode']:
                 if surf_type == 'gm':
                     gt_surf_path = os.path.join(freesurfer_subject_path, 'surf', f'{hemi}.pial.deformed')
                     gt_annot_path = os.path.join(freesurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas40.annot')
@@ -241,6 +244,8 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
                 epoch = None
                 gnn_layers = 0
             try:
+                if framework_name.lower() == 'cortexode':
+                    annot_path = 'cortexode' #TODO: UPDATE FOR DICE FROM CORTEX ODE 
                 pred_mesh, pred_labels = load_freesurfer_surface_and_labels(pred_surf_path, annot_path)
                 gt_mesh, gt_labels = load_freesurfer_surface_and_labels(gt_surf_path,gt_annot_path)
             except Exception as e:
@@ -256,10 +261,12 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
             hausdorff_dist = compute_hausdorff_distance(pred_mesh, gt_mesh)
 
             # Map labels if necessary
-            if pred_mesh['vertices'].shape[0] != gt_mesh['vertices'].shape[0]:
+            if pred_mesh['vertices'].shape[0] != gt_mesh['vertices'].shape[0] and pred_labels is not None:
                 pred_labels = map_labels(pred_labels, pred_mesh['vertices'], gt_mesh['vertices'])
 
-            dice_scores = compute_dice(pred_labels, gt_labels)
+
+            if pred_labels is not None:
+                dice_scores = compute_dice(pred_labels, gt_labels)
 
             self_collision_count = count_self_collisions(pred_mesh, k=30)
             total_triangles = len(pred_mesh['faces'])
@@ -267,13 +274,15 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
             #TODO: UPDATE EPOCHS FOR MORE HYPERPARAMETER VARIATIONS
             data_chamfer = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Chamfer Distance', '', chamfer_dist, '']
             data_hausdorff = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Hausdorff Distance', '', hausdorff_dist, '']
-            data_dice = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Macro Dice', '', dice_scores, '']
+            if pred_labels is not None:
+                data_dice = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Macro Dice', '', dice_scores, '']
             data_self_intersect = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles]
 
             write_to_csv(csv_file_path, lock, data_chamfer)
             write_to_csv(csv_file_path, lock, data_hausdorff)
             write_to_csv(csv_file_path, lock, data_self_intersect)
-            write_to_csv(csv_file_path,lock, data_dice)
+            if pred_labels is not None:
+                write_to_csv(csv_file_path,lock, data_dice)
             
             
 
