@@ -78,7 +78,7 @@ gm_model_file_deformation=$(echo "$gm_model_file_deformation" | xargs)
 gm_model_file_classification=$(echo "$gm_model_file_classification" | xargs)
 
 # Path to your shell script that activates the Conda environment and runs the Python script
-INNER_SHELL_SCRIPT="/cortexode/isbianalysis/slurm/generateSurfs/run_generate_surfacev2.sh"
+INNER_SHELL_SCRIPT="/cortexode/isbianalysis/slurm/generateSurfs/run_generate_surfacev3.sh"
 
 # Execute the shell script inside the Singularity container
 singularity exec --nv \
@@ -92,13 +92,15 @@ singularity exec --nv \
         "$solver" \
         "$gat_heads" \
         "$wm_model_dir" \
-        "$wm_model_file_combined" \
         "$model_file_wm" \
-        "$wm_model_file_classification" \
+        "$model_file_wm_deformation" \
+        "$model_file_wm_classification" \
         "$gm_model_dir" \
-        "$gm_model_file_combined" \
         "$model_file_gm" \
-        "$gm_model_file_classification"
+        "$model_file_gm_deformation" \
+        "$model_file_gm_classification" \
+        "cortexode"
+
 
 # Wait for the singularity command to finish
 wait

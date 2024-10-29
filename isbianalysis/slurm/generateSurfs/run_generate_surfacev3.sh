@@ -55,8 +55,6 @@ python_command="python generateISBITestSurfaces.py \
     --result_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/result/' \
     --result_subdir $case \
     --model_type '$model_type' \
-    --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/' \
-    --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/init/' \
     --data_usage 'test' \
 "
 
@@ -65,15 +63,32 @@ if [ "$case" == "a" ] && [[ "$model_type"=="csrvcv4" ]]; then
                       --model_file_wm_deformation '$model_file_wm_deformation' \
                       --model_file_wm_classification '$model_file_wm_classification' \
                       --model_file_gm_deformation '$model_file_gm_deformation' \
-                      --model_file_gm_classification '$model_file_gm_classification'
+                      --model_file_gm_classification '$model_file_gm_classification' \
+                      --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/' \
+                      --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/init/'
+    
     "
     echo 'av4'
 elif [ "$case" == "b" ] && [[ "$model_type"=="csrvcv4" ]]; then
     python_command+=" --seg_model_file 'model_seg_hcp_Unet_200epochs.pt' \
                       --model_file_wm '$wm_model_file_combined' \
-                      --model_file_gm '$gm_model_file_combined'
+                      --model_file_gm '$gm_model_file_combined' \
+                      --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/model/' \
+                      --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/isbi/isbi_gnnv4_0/init/'
+    
     "
     echo 'bv4'
+
+elif [ "$case" == "c" ]; then
+    python_command+=" --seg_model_file 'model_seg_hcp_Unet_200epochs.pt' \
+                      --model_file_wm '$wm_model_file_combined' \
+                      --model_file_gm '$gm_model_file_combined' \
+                      --model_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_csrf_gnn_0/model/' \
+                      --init_dir '/data/users2/washbee/CortexODE-CSRFusionNet/ckpts/hcp_csrf_gnn_0/init/'
+                      
+    "
+    echo 'c'
+
 fi
 
 # Run the Python script

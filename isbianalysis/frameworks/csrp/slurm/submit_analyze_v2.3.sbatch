@@ -12,7 +12,7 @@
 #SBATCH --oversubscribe
 
 # Activate the Anaconda environment
-condition='b'
+condition='a'
 echo 'condition ' $condition
 source /data/users2/washbee/anaconda3_refresh/bin/activate isbianalysis
 cd /data/users2/washbee/CortexODE-CSRFusionNet/isbianalysis/frameworks/csrp/slurm/

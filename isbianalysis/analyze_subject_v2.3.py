@@ -38,15 +38,41 @@ def compute_hausdorff_distance(mesh1, mesh2):
         return np.nan
 
 def load_freesurfer_surface_and_labels(surface_path,annot_path = None):
+    assert surface_path is not None, "surface_path is None"
     try:
         if annot_path is None:
-            # Load the annotation file with the same basename but .annot extension
-            annot_path = os.path.splitext(surface_path)[0] + '.annot'
             
+            pred_surf_dir = os.path.dirname(surface_path)
+
+            # Load the annotation file with the same basename but .annot extension
+            # annot_path = os.path.splitext(surface_path)[0] + '.annot'
+            pred_files = [f for f in os.listdir(pred_surf_dir) if f.endswith('.annot') and (subj_id in f)]
+            print(f'Prediction Files: {pred_files}')
+            for pred_file in pred_files:
+                print(f'Processing File: {pred_file}')
+                if 'gm' in surface_path:
+                    pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_gm_pred(?:_epochdef(\d+))?(?:_epochcls(\d+))?\.annot'
+                else:
+                    pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_wm_pred(?:_epochdef(\d+))?(?:_epochcls(\d+))?\.annot'
+                match = re.search(pattern, pred_file)
+                if not match:
+                    print(f"Filename pattern does not match expected format: {pred_file}. Skipping.")
+                    continue
+                
+                gnn_layers = match.group(2)
+                epoch_def = match.group(3) if match.group(3) is not None else None
+                epoch_cls = match.group(4) if match.group(4) is not None else None
+                annot_path = os.path.join(pred_surf_dir,pred_file)
+                break
+            assert annot_path is not None, 'update annot_path logic'
+            
+        print('reading surface_path',surface_path)
         coords, faces = nib.freesurfer.read_geometry(surface_path)
         faces = faces.astype(np.int64)  # Ensure faces are of type int64
         mesh = {'vertices': coords, 'faces': faces}
 
+        print('reading annot_path',annot_path)
+        
         labels, ctab, names = nib.freesurfer.read_annot(annot_path)
         return mesh, labels
         
@@ -104,7 +130,7 @@ def write_to_csv(file_path, lock, data):
             with open(file_path, mode='a', newline='') as file:
                 writer = csv.writer(file)
                 if not file_exists:
-                    writer.writerow(['Framework', 'Subject ID', 'surf_type', 'Hemisphere', 'GNNLayers', 'Epoch', 'Metric', 'Label', 'Score', 'Total Triangles'])
+                    writer.writerow(['Framework','Condition', 'Subject ID', 'surf_type', 'Hemisphere', 'GNNLayers', 'Epoch', 'Metric', 'Label', 'Score', 'Total Triangles'])
                 writer.writerow(data)
     except Exception as e:
         print(f"Error writing to CSV {file_path}: {e}")
@@ -174,9 +200,9 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
                 for pred_file in pred_files:
                     print(f'Processing File: {pred_file}')
                     if surf_type == 'gm':
-                        pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_gm_pred(?:_epoch(\d+))?\.surf'
+                        pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_gm_pred(?:_epochdef(\d+))?\.surf'
                     else:
-                        pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_wm_pred(?:_epoch(\d+))?\.surf'
+                        pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_wm_pred(?:_epochdef(\d+))?\.surf'
                     match = re.search(pattern, pred_file)
                     if not match:
                         print(f"Filename pattern does not match expected format: {pred_file}. Skipping.")
@@ -238,10 +264,11 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
             self_collision_count = count_self_collisions(pred_mesh, k=30)
             total_triangles = len(pred_mesh['faces'])
 
-            data_chamfer = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Chamfer Distance', '', chamfer_dist, '']
-            data_hausdorff = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Hausdorff Distance', '', hausdorff_dist, '']
-            data_dice = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Macro Dice', '', dice_scores, '']
-            data_self_intersect = [framework_name, subj_id, surf_type, hemi, gnn_layers, epoch, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles]
+            #TODO: UPDATE EPOCHS FOR MORE HYPERPARAMETER VARIATIONS
+            data_chamfer = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Chamfer Distance', '', chamfer_dist, '']
+            data_hausdorff = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Hausdorff Distance', '', hausdorff_dist, '']
+            data_dice = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Macro Dice', '', dice_scores, '']
+            data_self_intersect = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles]
 
             write_to_csv(csv_file_path, lock, data_chamfer)
             write_to_csv(csv_file_path, lock, data_hausdorff)

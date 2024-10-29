@@ -325,14 +325,16 @@ def load_models_and_weights(device, config):
         # Loading CortexODE model
         condition = 'cortexode'
         print(f"Model condition: {condition}")
-
+        print('model_file_wm',config.model_file_wm)
+        print('model_file_gm',config.model_file_gm)
         # Load CortexODE for WM
         if hasattr(config, 'model_file_wm') and config.model_file_wm is not None:
-            model_file_wm = os.path.join(config.wm_model_dir.strip(), config.model_file_wm.strip())
+            model_file_wm = os.path.join(config.model_dir.strip(), config.model_file_wm.strip())
             if not os.path.exists(model_file_wm):
                 print(f"CortexODE WM Model file '{model_file_wm}' not found. Exiting.")
                 exit(1)
-            rand_num_wm, epoch_wm = extract_rand_num_and_epoch_from_filename(config.model_file_wm)
+            rand_num_wm = None
+            epoch_wm = 90 #TODO:MAKE MORE GENERAL
             print(f"CortexODE WM Model Random Number: {rand_num_wm}, Epochs: {epoch_wm}")
             epoch_info['epoch_wm_def'] = epoch_wm
             epoch_info['epoch_wm_cls'] = None#TODO
@@ -345,15 +347,16 @@ def load_models_and_weights(device, config):
             model_wm.eval()
             models['model_wm'] = model_wm
         else:
-            models['model_wm'] = None
+            assert False,"Error loading model"
 
         # Load CortexODE for GM
         if hasattr(config, 'model_file_gm') and config.model_file_gm is not None:
-            model_file_gm = os.path.join(config.gm_model_dir.strip(), config.model_file_gm.strip())
+            model_file_gm = os.path.join(config.model_dir.strip(), config.model_file_gm.strip())
             if not os.path.exists(model_file_gm):
                 print(f"CortexODE GM Model file '{model_file_gm}' not found. Exiting.")
                 exit(1)
-            rand_num_gm, epoch_gm = extract_rand_num_and_epoch_from_filename(config.model_file_gm)
+            rand_num_gm = None
+            epoch_gm = 90 #TODO:MAKE MORE GENERAL
             print(f"CortexODE GM Model Random Number: {rand_num_gm}, Epochs: {epoch_gm}")
             epoch_info['epoch_gm_def'] = epoch_gm
             epoch_info['epoch_gm_cls'] = None#TODO
@@ -367,7 +370,7 @@ def load_models_and_weights(device, config):
             model_gm.eval()
             models['model_gm'] = model_gm
         else:
-            models['model_gm'] = None
+            assert False,"Error loading model"
     else:
         print(f"Unknown model_type '{model_type}'. Exiting.")
         exit(1)
@@ -507,11 +510,24 @@ if __name__ == '__main__':
                                 model_wm_cls.set_data(v_wm_pred, volume_in, f=f_in_tensor)
                                 _dx = model_wm_cls(T, v_wm_pred)
                                 class_logits_wm = model_wm_cls.get_class_logits()
+
                                 # Add LogSoftmax
-                                class_logits_wm = class_logits_wm.unsqueeze(0)
-                                class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
-                                class_probs_wm = class_logits_wm.permute(0, 2, 1)
-                                class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                                class_logits_wm = class_logits_wm.unsqueeze(0)  # Shape: [1, N, C]
+                                assert class_logits_wm.dim() == 3, f"class_logits_wm should be 3-dimensional, got {class_logits_wm.dim()} dimensions."
+                                batch_size, N, C = class_logits_wm.shape  # batch_size should be 1
+                                assert batch_size == 1, f"Batch size should be 1, got {batch_size}."
+                                print(f"Shape of class_logits_wm after unsqueeze: {class_logits_wm.shape}")
+                                print(f"Number of vertices (N): {N}")
+                                print(f"Number of classes (C): {C}")
+                                assert N > C, f"Expected N > C, but got N={N}, C={C}."
+
+                                # Apply log_softmax along the classes dimension
+                                class_logits_wm = F.log_softmax(class_logits_wm, dim=2)  # Apply over classes
+
+                                # No need to permute dimensions
+                                # Predict classes
+                                class_wm_pred = torch.argmax(class_logits_wm, dim=2).cpu().numpy()  # Shape: [1, N]
+
                                 # Inflate and smooth for grey matter
                                 v_gm_in = v_wm_pred.clone()
                                 for i in range(n_inflate):
@@ -534,10 +550,22 @@ if __name__ == '__main__':
                                 _dx = model_gm_cls(T, v_gm_pred)
                                 class_logits_gm = model_gm_cls.get_class_logits()
                                 # Add LogSoftmax
-                                class_logits_gm = class_logits_gm.unsqueeze(0)
-                                class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
-                                class_probs_gm = class_logits_gm.permute(0, 2, 1)
-                                class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
+                                class_logits_gm = class_logits_gm.unsqueeze(0)  # Shape: [1, N, C]
+                                assert class_logits_gm.dim() == 3, f"class_logits_gm should be 3-dimensional, got {class_logits_gm.dim()} dimensions."
+                                batch_size, N, C = class_logits_gm.shape  # batch_size should be 1
+                                assert batch_size == 1, f"Batch size should be 1, got {batch_size}."
+                                print(f"Shape of class_logits_gm after unsqueeze: {class_logits_gm.shape}")
+                                print(f"Number of vertices (N): {N}")
+                                print(f"Number of classes (C): {C}")
+                                assert N > C, f"Expected N > C, but got N={N}, C={C}."
+
+                                # Apply log_softmax along the classes dimension
+                                class_logits_gm = F.log_softmax(class_logits_gm, dim=2)  # Apply over classes
+
+                                # No need to permute dimensions
+                                # Predict classes
+                                class_gm_pred = torch.argmax(class_logits_gm, dim=2).cpu().numpy()  # Shape: [1, N]
+
                             else:
                                 class_gm_pred = None
                         else:
@@ -558,10 +586,22 @@ if __name__ == '__main__':
                             _dx = model_wm(T, v_wm_pred)
                             class_logits_wm = model_wm.get_class_logits()
                             # Add LogSoftmax
-                            class_logits_wm = class_logits_wm.unsqueeze(0)
-                            class_logits_wm = F.log_softmax(class_logits_wm, dim=1)
-                            class_probs_wm = class_logits_wm.permute(0, 2, 1)
-                            class_wm_pred = torch.argmax(class_probs_wm, dim=1).cpu().numpy()
+                            class_logits_wm = class_logits_wm.unsqueeze(0)  # Shape: [1, N, C]
+                            assert class_logits_wm.dim() == 3, f"class_logits_wm should be 3-dimensional, got {class_logits_wm.dim()} dimensions."
+                            batch_size, N, C = class_logits_wm.shape  # batch_size should be 1
+                            assert batch_size == 1, f"Batch size should be 1, got {batch_size}."
+                            print(f"Shape of class_logits_wm after unsqueeze: {class_logits_wm.shape}")
+                            print(f"Number of vertices (N): {N}")
+                            print(f"Number of classes (C): {C}")
+                            assert N > C, f"Expected N > C, but got N={N}, C={C}."
+
+                            # Apply log_softmax along the classes dimension
+                            class_logits_wm = F.log_softmax(class_logits_wm, dim=2)  # Apply over classes
+
+                            # No need to permute dimensions
+                            # Predict classes
+                            class_wm_pred = torch.argmax(class_logits_wm, dim=2).cpu().numpy()  # Shape: [1, N]
+
                             v_gm_in = v_wm_pred.clone()
                             for i in range(n_inflate):
                                 v_gm_in = laplacian_smooth(v_gm_in, f_in_tensor, lambd=1.0)
@@ -583,10 +623,22 @@ if __name__ == '__main__':
                             _dx = model_gm(T, v_gm_pred)
                             class_logits_gm = model_gm.get_class_logits()
                             # Add LogSoftmax
-                            class_logits_gm = class_logits_gm.unsqueeze(0)
-                            class_logits_gm = F.log_softmax(class_logits_gm, dim=1)
-                            class_probs_gm = class_logits_gm.permute(0, 2, 1)
-                            class_gm_pred = torch.argmax(class_probs_gm, dim=1).cpu().numpy()
+                            class_logits_gm = class_logits_gm.unsqueeze(0)  # Shape: [1, N, C]
+                            assert class_logits_gm.dim() == 3, f"class_logits_gm should be 3-dimensional, got {class_logits_gm.dim()} dimensions."
+                            batch_size, N, C = class_logits_gm.shape  # batch_size should be 1
+                            assert batch_size == 1, f"Batch size should be 1, got {batch_size}."
+                            print(f"Shape of class_logits_gm after unsqueeze: {class_logits_gm.shape}")
+                            print(f"Number of vertices (N): {N}")
+                            print(f"Number of classes (C): {C}")
+                            assert N > C, f"Expected N > C, but got N={N}, C={C}."
+
+                            # Apply log_softmax along the classes dimension
+                            class_logits_gm = F.log_softmax(class_logits_gm, dim=2)  # Apply over classes
+
+                            # No need to permute dimensions
+                            # Predict classes
+                            class_gm_pred = torch.argmax(class_logits_gm, dim=2).cpu().numpy()  # Shape: [1, N]
+
                         else:
                             print(f"GM Model not loaded for subject {subid}.")
 
@@ -656,9 +708,9 @@ if __name__ == '__main__':
                     try:
                         if model_type in ['csrvcv4']:
                             
-                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred, ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=epoch_info.get('wm_def_epoch', None),epoch_info_cls = epoch_info.get('wm_cls_epoch', None))
+                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred.squeeze(0), ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=epoch_info.get('wm_def_epoch', None),epoch_info_cls = epoch_info.get('wm_cls_epoch', None))
                             
-                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred, ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=epoch_info.get('gm_def_epoch', None),epoch_info_cls = epoch_info.get('gm_cls_epoch', None))
+                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred.squeeze(0), ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=epoch_info.get('gm_def_epoch', None),epoch_info_cls = epoch_info.get('gm_cls_epoch', None))
                             
                         elif model_type == 'cortexode':
                             # Save without annotations
