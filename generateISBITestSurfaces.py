@@ -89,12 +89,12 @@ def save_mesh_with_annotations(verts, faces, labels=None, ctab=None, save_path_f
     """
     if save_path_fs is None:
         raise ValueError("save_path_fs must be provided to save the mesh.")
+    if verts != 'd':
+        verts = verts.squeeze()
+        faces = faces.squeeze().astype(np.int32)
 
-    verts = verts.squeeze()
-    faces = faces.squeeze().astype(np.int32)
-
-    assert not np.isnan(verts.max()), "The value is NaN in vertices."
-    assert not np.isnan(verts.min()), "The value is NaN in vertices."
+        assert not np.isnan(verts.max()), "The value is NaN in vertices."
+        assert not np.isnan(verts.min()), "The value is NaN in vertices."
 
     if labels is not None:
         labels = labels.squeeze().astype(np.int32)
@@ -108,14 +108,16 @@ def save_mesh_with_annotations(verts, faces, labels=None, ctab=None, save_path_f
         assert epoch_info_cls is not None, "need to set both"
         surf_path = f"{save_path_fs}_epochdef{epoch_info}.surf"
         annot_path = f"{save_path_fs}_epochdef{epoch_info}_epochcls{epoch_info_cls}.annot"
+    elif epoch_info_cls is not None:
+        surf_path = None
+        annot_path = f"{save_path_fs}_epochcls{epoch_info_cls}.annot"
     else:
         surf_path = f"{save_path_fs}.surf"
         annot_path = f"{save_path_fs}.annot"
-    if os.path.exists(surf_path) or os.path.exists(annot_path):
-        print('surf or annot file exists, continuing')
-        return
+    
     # Save geometry
-    nib.freesurfer.io.write_geometry(surf_path, verts, faces)
+    if verts != 'd':
+        nib.freesurfer.io.write_geometry(surf_path, verts, faces)
 
     # Save annotations if labels are provided
     if labels is not None and ctab is not None:
@@ -317,7 +319,55 @@ def load_models_and_weights(device, config):
                 model_gm.load_state_dict(checkpoint_gm)
             model_gm.eval()
             models['model_gm'] = model_gm
+        elif gm_cls_specified and wm_cls_specified:
+            # Condition 'a'
+            condition = 'd'
+            print(f"Model condition: {condition}")
 
+            
+            # Load WM Classification Model
+            if wm_cls_specified:
+                model_file_wm_cls = os.path.join(config.model_dir.strip(), config.model_file_wm_classification.strip())
+                if not os.path.exists(model_file_wm_cls):
+                    print(f"WM Classification Model file '{model_file_wm_cls}' not found. Exiting.")
+                    exit(1)
+                rand_num_wm_cls, epoch_wm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_wm_classification)
+                print(f"WM Classification Model Random Number: {rand_num_wm_cls}, Epochs: {epoch_wm_cls}")
+                epoch_info['wm_cls_epoch'] = epoch_wm_cls
+                if model_type == 'csrvcv4':
+                    model_wm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                        use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+                checkpoint_wm_cls = torch.load(model_file_wm_cls, map_location=device)
+                if 'model_state_dict' in checkpoint_wm_cls:
+                    model_wm_cls.load_state_dict(checkpoint_wm_cls['model_state_dict'])
+                else:
+                    model_wm_cls.load_state_dict(checkpoint_wm_cls)
+                model_wm_cls.eval()
+                models['model_wm_cls'] = model_wm_cls
+            else:
+                print('missing wm classification model')
+
+            # Load GM Classification Model
+            if gm_cls_specified:
+                model_file_gm_cls = os.path.join(config.model_dir.strip(), config.model_file_gm_classification.strip())
+                if not os.path.exists(model_file_gm_cls):
+                    print(f"GM Classification Model file '{model_file_gm_cls}' not found. Exiting.")
+                    exit(1)
+                rand_num_gm_cls, epoch_gm_cls = extract_rand_num_and_epoch_from_filename(config.model_file_gm_classification.strip())
+                print(f"GM Classification Model Random Number: {rand_num_gm_cls}, Epochs: {epoch_gm_cls}")
+                epoch_info['gm_cls_epoch'] = epoch_gm_cls
+                if model_type == 'csrvcv4':
+                    model_gm_cls = CSRVCV4(dim_h=C, kernel_size=K, n_scale=Q, sf=config.sf, gnn_layers=config.gnn_layers,
+                                        use_gcn=use_gcn, gat_heads=config.gat_heads, num_classes=config.num_classes).to(device)
+                checkpoint_gm_cls = torch.load(model_file_gm_cls, map_location=device)
+                if 'model_state_dict' in checkpoint_gm_cls:
+                    model_gm_cls.load_state_dict(checkpoint_gm_cls['model_state_dict'])
+                else:
+                    model_gm_cls.load_state_dict(checkpoint_gm_cls)
+                model_gm_cls.eval()
+                models['model_gm_cls'] = model_gm_cls
+            else:
+                print('missing gm classification model')
         else:
             print("Unsupported condition for CSRVCV models. Exiting.")
             exit(1)
@@ -677,7 +727,68 @@ if __name__ == '__main__':
 
                     else:
                         print(f"Unsupported model architecture '{model_type}' for condition '{condition}'. Skipping.")
-                
+                elif condition == 'd':
+                    if model_type in ['csrvcv4']:
+                        # Deformation and Classification for WM
+                        model_wm_cls = models.get('model_wm_cls', None)
+                        if model_wm_cls is not None:
+                            assert v_gt_wm.dim() == 2,'remove squeeze'
+                            assert f_gt_wm.dim() == 2,'remove squeeze'
+                            model_wm_cls.set_data(v_gt_wm.cuda().unsqueeze(0), volume_in.cuda(), f=f_gt_wm.cuda().unsqueeze(0))
+                            _dx = model_wm_cls(T, v_gt_wm.cuda().unsqueeze(0))
+                            class_logits_wm = model_wm_cls.get_class_logits()
+
+                            # Add LogSoftmax
+                            class_logits_wm = class_logits_wm.unsqueeze(0)  # Shape: [1, N, C]
+                            assert class_logits_wm.dim() == 3, f"class_logits_wm should be 3-dimensional, got {class_logits_wm.dim()} dimensions."
+                            batch_size, N, C = class_logits_wm.shape  # batch_size should be 1
+                            assert batch_size == 1, f"Batch size should be 1, got {batch_size}."
+                            print(f"Shape of class_logits_wm after unsqueeze: {class_logits_wm.shape}")
+                            print(f"Number of vertices (N): {N}")
+                            print(f"Number of classes (C): {C}")
+                            assert N > C, f"Expected N > C, but got N={N}, C={C}."
+
+                            # Apply log_softmax along the classes dimension
+                            class_logits_wm = F.log_softmax(class_logits_wm, dim=2)  # Apply over classes
+
+                            # No need to permute dimensions
+                            # Predict classes
+                            class_wm_pred = torch.argmax(class_logits_wm, dim=2).cpu().numpy()  # Shape: [1, N]
+
+                        else:
+                            print(f"WM Deformation or Classification model not loaded for subject {subid}.")
+
+                        model_gm_cls = models.get('model_gm_cls', None)
+
+                        if model_gm_cls is not None:
+                            assert v_gt_gm.dim() == 2,'remove squeeze'
+                            assert f_gt_gm.dim() == 2,'remove squeeze'
+                            
+                            model_gm_cls.set_data(v_gt_gm.cuda().unsqueeze(0), volume_in.cuda(), f=f_gt_gm.cuda().unsqueeze(0))
+                            _dx = model_gm_cls(T, v_gt_gm.cuda().unsqueeze(0))
+                            class_logits_gm = model_gm_cls.get_class_logits()
+                            # Add LogSoftmax
+                            class_logits_gm = class_logits_gm.unsqueeze(0)  # Shape: [1, N, C]
+                            assert class_logits_gm.dim() == 3, f"class_logits_gm should be 3-dimensional, got {class_logits_gm.dim()} dimensions."
+                            batch_size, N, C = class_logits_gm.shape  # batch_size should be 1
+                            assert batch_size == 1, f"Batch size should be 1, got {batch_size}."
+                            print(f"Shape of class_logits_gm after unsqueeze: {class_logits_gm.shape}")
+                            print(f"Number of vertices (N): {N}")
+                            print(f"Number of classes (C): {C}")
+                            assert N > C, f"Expected N > C, but got N={N}, C={C}."
+
+                            # Apply log_softmax along the classes dimension
+                            class_logits_gm = F.log_softmax(class_logits_gm, dim=2)  # Apply over classes
+
+                            # No need to permute dimensions
+                            # Predict classes
+                            class_gm_pred = torch.argmax(class_logits_gm, dim=2).cpu().numpy()  # Shape: [1, N]
+
+                        else:
+                            print(f"GM Deformation or Classification model not loaded for subject {subid}.")
+                            
+                    else:
+                        print(f"Unsupported model architecture '{model_type}' for condition 'a'.")
                 elif config.seg_model_file is None:
                         print('print ground truth')
                 else:
@@ -685,21 +796,22 @@ if __name__ == '__main__':
 
                 if config.seg_model_file is not None:
                     # Convert predictions to NumPy
-                    v_wm_pred_np = v_wm_pred[0].cpu().numpy()
-                    f_wm_pred_np = f_in_tensor[0].cpu().numpy()
-                    v_gm_pred_np = v_gm_pred[0].cpu().numpy()
-                    f_gm_pred_np = f_in_tensor[0].cpu().numpy()
+                    if condition !='d':
+                        v_wm_pred_np = v_wm_pred[0].cpu().numpy()
+                        f_wm_pred_np = f_in_tensor[0].cpu().numpy()
+                        v_gm_pred_np = v_gm_pred[0].cpu().numpy()
+                        f_gm_pred_np = f_in_tensor[0].cpu().numpy()
 
-                    # Map the surface coordinate from [-1,1] to its original space
-                    v_wm_pred_mapped, f_wm_pred_mapped = process_surface_inverse(v_wm_pred_np, f_wm_pred_np, data_name)
-                    v_gm_pred_mapped, f_gm_pred_mapped = process_surface_inverse(v_gm_pred_np, f_gm_pred_np, data_name)
+                        # Map the surface coordinate from [-1,1] to its original space
+                        v_wm_pred_mapped, f_wm_pred_mapped = process_surface_inverse(v_wm_pred_np, f_wm_pred_np, data_name)
+                        v_gm_pred_mapped, f_gm_pred_mapped = process_surface_inverse(v_gm_pred_np, f_gm_pred_np, data_name)
 
-                    # ------ Save predicted surfaces and annotations -------
-                    # Define the save paths, including epoch information
-                    
+                        # ------ Save predicted surfaces and annotations -------
+                        # Define the save paths, including epoch information
+                        
                     pred_surface_basename_wm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_wm_pred'
                     pred_surface_basename_gm = f'{data_name}_{surf_hemi}_{subid}_gnnlayers{config.gnn_layers}_gm_pred'
-                
+            
                     pred_surface_path_wm = os.path.join(wm_hemi_dir.strip(), pred_surface_basename_wm.strip())
                     pred_surface_path_gm = os.path.join(gm_hemi_dir.strip(), pred_surface_basename_gm.strip())
                 
@@ -708,16 +820,24 @@ if __name__ == '__main__':
                     try:
                         if model_type in ['csrvcv4']:
                             
-                            save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred.squeeze(0), ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=epoch_info.get('wm_def_epoch', None),epoch_info_cls = epoch_info.get('wm_cls_epoch', None))
+                            if condition !='d':
+                                save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=class_wm_pred.squeeze(0), ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=epoch_info.get('wm_def_epoch', None),epoch_info_cls = epoch_info.get('wm_cls_epoch', None))
+                                
+                                save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred.squeeze(0), ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=epoch_info.get('gm_def_epoch', None),epoch_info_cls = epoch_info.get('gm_cls_epoch', None))
+                            else:
+                                
+                                assert labels_wm.shape == class_wm_pred.squeeze(0).shape, "debugging required"
+                                assert labels_gm.shape == class_gm_pred.squeeze(0).shape, "debugging required"
+                                save_mesh_with_annotations(condition, condition, labels=class_wm_pred.squeeze(0), ctab=ctab_wm, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=None,epoch_info_cls=epoch_info.get('wm_cls_epoch', None))
                             
-                            save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=class_gm_pred.squeeze(0), ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=epoch_info.get('gm_def_epoch', None),epoch_info_cls = epoch_info.get('gm_cls_epoch', None))
-                            
+                                save_mesh_with_annotations(condition, condition, labels=class_gm_pred.squeeze(0), ctab=ctab_gm, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=None,epoch_info_cls=epoch_info.get('gm_cls_epoch', None))
+
                         elif model_type == 'cortexode':
                             # Save without annotations
                             save_mesh_with_annotations(v_wm_pred_mapped, f_wm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_wm, data_name=data_name, epoch_info=epoch_info.get('wm_def_epoch', None),epoch_info_cls=epoch_info.get('wm_cls_epoch', None))
                             
                             save_mesh_with_annotations(v_gm_pred_mapped, f_gm_pred_mapped, labels=None, ctab=None, save_path_fs=pred_surface_path_gm, data_name=data_name, epoch_info=epoch_info.get('gm_def_epoch', None),epoch_info_cls=epoch_info.get('gm_cls_epoch', None))
-                            
+                        
                         else:
                             print(f"Unsupported model architecture '{model_type}'. Skipping saving predicted surfaces.")
                     except Exception as e:
