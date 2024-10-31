@@ -65,12 +65,13 @@ def load_freesurfer_surface_and_labels(surface_path,annot_path = None):
                 annot_path = os.path.join(pred_surf_dir,pred_file)
                 break
             assert annot_path is not None, 'update annot_path logic'
-            
-        print('reading surface_path',surface_path)
-        coords, faces = nib.freesurfer.read_geometry(surface_path)
-        faces = faces.astype(np.int64)  # Ensure faces are of type int64
-        mesh = {'vertices': coords, 'faces': faces}
-
+        if surface_path != 'freesurfercsrp':
+            print('reading surface_path',surface_path)
+            coords, faces = nib.freesurfer.read_geometry(surface_path)
+            faces = faces.astype(np.int64)  # Ensure faces are of type int64
+            mesh = {'vertices': coords, 'faces': faces}
+        else:
+            mesh = None
         print('reading annot_path',annot_path)
         
         if annot_path != 'cortexode':
@@ -243,6 +244,43 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
                 annot_path = os.path.join(fastsurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas.mapped.annot')
                 epoch = None
                 gnn_layers = 0
+            elif framework_name.lower() in ['freesurfercsrp']:
+                if surf_type == 'gm':
+                    gt_surf_path = os.path.join(freesurfer_subject_path, 'surf', f'{hemi}.pial.deformed')
+                    gt_annot_path = os.path.join(freesurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas40.annot')
+                elif surf_type == 'wm':
+                    gt_surf_path = os.path.join(freesurfer_subject_path, 'surf', f'{hemi}.white.deformed')
+                    gt_annot_path = os.path.join(freesurfer_subject_path, 'label', f'{hemi}.aparc.DKTatlas40.annot')
+                else: 
+                    assert False, 'bad surf_type'
+                
+                pred_surf_dir = os.path.join(pred_base_path,condition,'test', surf_type, hemi)
+                
+                if not os.path.isdir(pred_surf_dir):
+                    print(f"Prediction directory does not exist: {pred_surf_dir}. Skipping.")
+                    continue
+                
+                pred_files = [f for f in os.listdir(pred_surf_dir) if f.endswith('.annot') and (subj_id in f)]
+                print(f'Prediction Files: {pred_files}')
+                for pred_file in pred_files:
+                    print(f'Processing File: {pred_file}')
+                    if surf_type == 'gm':
+                        pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_gm_pred(?:_epochcls(\d+))?\.annot'
+                    else:
+                        pattern = r'hcp_[lr]h_(\d{6})_gnnlayers(\d+)_wm_pred(?:_epochcls(\d+))?\.annot'
+                    match = re.search(pattern, pred_file)
+                    if not match:
+                        print(f"Filename pattern does not match expected format: {pred_file}. Skipping.")
+                        continue
+                    
+                    gnn_layers = match.group(2)
+                    epoch = match.group(3) if match.group(3) is not None else None
+
+                    pred_surf_path = "freesurfercsrp"
+                    print(f'Prediction Surface Path: {pred_surf_path}')
+                    annot_path = os.path.join(pred_surf_dir, pred_file)
+                    break
+                
             try:
                 if framework_name.lower() == 'cortexode':
                     annot_path = 'cortexode' #TODO: UPDATE FOR DICE FROM CORTEX ODE 
@@ -252,36 +290,37 @@ def process_subject(subj_id, csv_file_path, lock, framework_name, pred_base_path
                 print(f"Error loading meshes or labels for {subj_id}, {hemi}, {surf_type}: {e}")
                 continue
             
-            print('max pred',np.max(pred_mesh['vertices']))
-            print('min pred',np.min(pred_mesh['vertices']))
-            print('max gt',np.max(gt_mesh['vertices']))
-            print('min gt',np.min(gt_mesh['vertices']))
             
-            chamfer_dist = compute_chamfer_distance(pred_mesh, gt_mesh)
-            hausdorff_dist = compute_hausdorff_distance(pred_mesh, gt_mesh)
+            
+            if pred_mesh is not None:
+                print('max pred',np.max(pred_mesh['vertices']))
+                print('min pred',np.min(pred_mesh['vertices']))
+                print('max gt',np.max(gt_mesh['vertices']))
+                print('min gt',np.min(gt_mesh['vertices']))
+                
+                # Map labels if necessary
+                if pred_mesh['vertices'].shape[0] != gt_mesh['vertices'].shape[0] and pred_labels is not None:
+                    pred_labels = map_labels(pred_labels, pred_mesh['vertices'], gt_mesh['vertices'])
 
-            # Map labels if necessary
-            if pred_mesh['vertices'].shape[0] != gt_mesh['vertices'].shape[0] and pred_labels is not None:
-                pred_labels = map_labels(pred_labels, pred_mesh['vertices'], gt_mesh['vertices'])
+                self_collision_count = count_self_collisions(pred_mesh, k=30)
+                total_triangles = len(pred_mesh['faces'])
+                data_self_intersect = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles]
+                write_to_csv(csv_file_path, lock, data_self_intersect)
+                
+                #TODO: UPDATE EPOCHS FOR MORE HYPERPARAMETER VARIATIONS
+                chamfer_dist = compute_chamfer_distance(pred_mesh, gt_mesh)
+                hausdorff_dist = compute_hausdorff_distance(pred_mesh, gt_mesh)
 
-
+                data_chamfer = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Chamfer Distance', '', chamfer_dist, '']
+                data_hausdorff = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Hausdorff Distance', '', hausdorff_dist, '']
+                write_to_csv(csv_file_path, lock, data_chamfer)
+                write_to_csv(csv_file_path, lock, data_hausdorff)
+                
+            
+            
             if pred_labels is not None:
                 dice_scores = compute_dice(pred_labels, gt_labels)
-
-            self_collision_count = count_self_collisions(pred_mesh, k=30)
-            total_triangles = len(pred_mesh['faces'])
-
-            #TODO: UPDATE EPOCHS FOR MORE HYPERPARAMETER VARIATIONS
-            data_chamfer = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Chamfer Distance', '', chamfer_dist, '']
-            data_hausdorff = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Hausdorff Distance', '', hausdorff_dist, '']
-            if pred_labels is not None:
                 data_dice = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Macro Dice', '', dice_scores, '']
-            data_self_intersect = [framework_name, condition, subj_id, surf_type, hemi, gnn_layers, epoch, 'Self-Intersections (SIF)', '', self_collision_count, total_triangles]
-
-            write_to_csv(csv_file_path, lock, data_chamfer)
-            write_to_csv(csv_file_path, lock, data_hausdorff)
-            write_to_csv(csv_file_path, lock, data_self_intersect)
-            if pred_labels is not None:
                 write_to_csv(csv_file_path,lock, data_dice)
             
             
