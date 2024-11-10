@@ -37,16 +37,25 @@ class SegDataset(Dataset):
         self.config = config
         self.data_usage = data_usage
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        # Assuming self.data_dir is the directory path containing subject folders and possibly other files
-        self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '',str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
+        
+        
+        if config.data_name == 'bsnip':
+            fn = os.path.join(config.data_dir,f'bsnip{config.data_usage}.txt')
+            with open(fn, 'r') as f:
+                self.subject_list = sorted([line.strip() for line in f if line.strip()])
+        else:
+            # Assuming self.data_dir is the directory path containing subject folders and possibly other files
+            self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '',str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
         
     def __len__(self):
         return len(self.subject_list)
     
     def __getitem__(self, idx):
         subid = f'{self.subject_list[idx]}'
-        subid = re.sub(r'\D', '', subid)
-
+        if self.config.data_name != 'bsnip':
+            subid = re.sub(r'\D', '', subid)
+        # print('subid',subid)
+        assert len(subid) >1,f'subid,{subid}'
         vol, seg,_,aff = self._load_seg_data_for_subject(subid,self.config,self.data_usage)
         assert subid == _
         return vol, seg, subid, aff
@@ -62,7 +71,13 @@ class SegDataset(Dataset):
         data_dir = config.data_dir
         data_dir = data_dir + data_usage + '/'
 
-        subject_list = sorted(os.listdir(data_dir))
+        if config.data_name == 'bsnip':
+            fn = os.path.join(config.data_dir,f'bsnip{config.data_usage}.txt')
+            with open(fn, 'r') as f:
+                self.subject_list = sorted([line.strip() for line in f if line.strip()])
+
+        else:
+            subject_list = sorted(os.listdir(data_dir))
         
         if data_name == 'hcp' or data_name == 'adni':
             brain = nib.load(data_dir+subid+'/mri/orig.mgz')
@@ -72,6 +87,24 @@ class SegDataset(Dataset):
             aff=brain.affine
             
             seg = nib.load(data_dir+subid+'/mri/ribbon.mgz')
+            seg_arr = seg.get_fdata()
+            seg_arr = process_volume(seg_arr, data_name)[0]
+            seg_left = (seg_arr == 2).astype(int)    # left wm
+            seg_right = (seg_arr == 41).astype(int)  # right wm
+
+            seg_arr = np.zeros_like(seg_left, dtype=int)  # final label
+            seg_arr += 1 * seg_left
+            seg_arr += 2 * seg_right
+        elif data_name == 'bsnip':
+            f = os.path.join(subid,'mri/orig.mgz')
+            # print('f',f,'subid',subid)
+            brain = nib.load(f)#may need to update this path.
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 255.).astype(np.float32)
+            brain_arr = process_volume(brain_arr, data_name)
+            aff=brain.affine
+            
+            seg = nib.load(os.path.join(subid,'mri/ribbon.mgz'))
             seg_arr = seg.get_fdata()
             seg_arr = process_volume(seg_arr, data_name)[0]
             seg_left = (seg_arr == 2).astype(int)    # left wm
@@ -122,7 +155,12 @@ class BrainDataset(Dataset):
         a list of subject IDs for lazy loading.
         """
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
+        if config.data_name == 'bsnip':
+            fn = os.path.join(config.data_dir,f'bsnip{config.data_usage}.txt')
+            with open(fn, 'r') as f:
+                self.subject_list = sorted([line.strip() for line in f if line.strip()])
+        else:
+            self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
         self.config = config
         self.data_usage = data_usage
         self.mse_threshold = config.mse_threshold

@@ -23,7 +23,7 @@ def process_volume(x, data_name='hcp'):
         x = x[::-1,:,:]
         x = x[:,:,::-1]
         return x[None, 32:-32, 16:-16, 32:-32].copy()
-    elif data_name == 'adni':
+    elif data_name == 'adni' or data_name == 'bsnip':
         x = x.transpose(1,2,0)
         x = x[::-1,:,:]
         x = x[:,:,::-1]
@@ -32,7 +32,7 @@ def process_volume(x, data_name='hcp'):
         x = np.pad(x, ((2,2),(0,0),(0,0)), 'constant', constant_values=0)
         return x[None].copy()
     else:
-        raise ValueError("data_name should be in ['hcp','adni','dhcp']")
+        raise ValueError("data_name should be in ['hcp','adni','dhcp', or 'bsnip']")
 
 
 def process_surface(v, f, data_name='hcp'):
@@ -56,7 +56,7 @@ def process_surface(v, f, data_name='hcp'):
         #add v[:,0] = v[:,0] + 32 
         #permute v = v[:,[0,2,1]].copy()
         
-    elif data_name == 'adni':
+    elif data_name == 'adni' or data_name == 'bsnip':
         # clip the surface according to the volume
         v[:,0] = v[:,0] - 40
         v[:,1] = v[:,1] - 24
@@ -70,7 +70,7 @@ def process_surface(v, f, data_name='hcp'):
         # normalize to [-1, 1]
         v = (v - [104, 104, 78]) / 104
     else:
-        raise ValueError("data_name should be in ['hcp','adni','dhcp']")
+        raise ValueError("data_name should be in ['hcp','adni','dhcp','bsnip']")
 
     return v, f
 
@@ -97,7 +97,7 @@ def process_surface_inverse(v, f, data_name='hcp'):
         #v[:,0] = v[:,0] + 32 
         #v = v[:,[0,2,1]].copy()
         
-    elif data_name == 'adni':
+    elif data_name == 'adni' or data_name == 'bsnip':
         v = v *104 + [88, 104, 88]
         v = v - 128
         v[:,0] = v[:,0] + 40
@@ -109,7 +109,7 @@ def process_surface_inverse(v, f, data_name='hcp'):
         v = v[:,[2,1,0]].copy()
         f = f[:,[2,1,0]].copy()        
     else:
-        raise ValueError("data_name should be in ['hcp','adni','dhcp']")
+        raise ValueError("data_name should be in ['hcp','adni','dhcp', 'bsnip']")
 
     return v, f
 

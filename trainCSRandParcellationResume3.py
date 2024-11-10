@@ -82,6 +82,7 @@ def setup_logger(log_filename):
     
     return logger
 
+
 def train_surf(config):
     """
     Training CSRVCV4 for cortical surface reconstruction and classification.
