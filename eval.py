@@ -177,7 +177,7 @@ if __name__ == '__main__':
 
     
     if test_type == 'eval':
-        testset = SegDataset(config=config, data_usage='test')
+        testset = SegDataset(config=config, data_usage=config.data_usage)
         
         #Updated
         testloader = DataLoader(testset, batch_size=1, shuffle=True, num_workers=4)
@@ -190,14 +190,22 @@ if __name__ == '__main__':
         sif_gm_all = []
 
     if test_type == 'init':
-        testset = SegDataset(config=config, data_usage='')
+        testset = SegDataset(config=config, data_usage=config.data_usage)
         
         #Updated
         testloader = DataLoader(testset, batch_size=1, shuffle=True, num_workers=4)
     
+    unique_ids = set()
     for idx, data in enumerate(testloader):
-        volume_in, seg_gt, subid = data
+        volume_in, seg_gt, subid, _aff = data
         subid = str(subid[0])
+        
+        if config.data_name == 'bsnip':
+            subid = os.path.basename(os.path.normpath(subid))
+            assert subid not in unique_ids, f"Duplicate ID detected: {subid}"
+            unique_ids.add(subid)
+            
+        
         volume_in = volume_in.to(device)
         seg_gt = seg_gt.to(device)
 
