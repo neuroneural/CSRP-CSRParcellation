@@ -106,7 +106,7 @@ def train_seg(config):
     for epoch in tqdm(range(n_epochs+1)):
         avg_loss = []
         for idx, data in enumerate(trainloader):
-            volume_in, seg_gt, _sub_id = data
+            volume_in, seg_gt, _sub_id, _aff = data
 
             optimizer.zero_grad()
             volume_in = volume_in.to(device)
@@ -126,7 +126,7 @@ def train_seg(config):
                 avg_error = []
                 avg_dice = []
                 for idx, data in enumerate(validloader):
-                    volume_in, seg_gt, _ = data
+                    volume_in, seg_gt, _, _aff = data
                     volume_in = volume_in.to(device)
                     seg_gt = seg_gt.long().to(device)
                     seg_out = segnet(volume_in)
@@ -450,7 +450,7 @@ if __name__ == '__main__':
     mp.set_start_method('spawn')
     config = load_config()
     if config.train_type == 'surf':
-        if config.continue == "yes":
+        if config.resume == "yes":
             best_model_path, best_val_error = find_best_model(config.model_dir, config)
             if best_model_path:
                 config.model_file = best_model_path

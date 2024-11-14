@@ -89,4 +89,5 @@ python trainCSRandParcellationResume3.py \
     --tag 'vc' \
     --device 'cuda' \
     --classification_loss_weight 1.0 \
-    --dropedge_prob .1
+    --dropedge_prob .1 \
+    --lr .00005

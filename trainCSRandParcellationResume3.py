@@ -101,7 +101,7 @@ def train_surf(config):
     print('atlas', config.atlas)
     n_epochs = config.n_epochs
     lr = config.lr
-
+    print('lr', lr)
     C = config.dim_h     # Hidden dimension of features
     K = config.kernel_size    # Kernel / cube size
     Q = config.n_scale    # Multi-scale input
@@ -240,8 +240,8 @@ def train_surf(config):
     validsetStage2Class = None
    
     if config.parc_init_dir is not None:
-        trainsetStage2Class = CSRVertexLabeledDatasetV3(config, 'train')
-        validsetStage2Class = CSRVertexLabeledDatasetV3(config, 'valid')
+        trainsetStage2Class = CSRVertexLabeledDatasetV3(config, 'train')#TODO: UPDATE DATALOADER FOR BSNIP
+        validsetStage2Class = CSRVertexLabeledDatasetV3(config, 'valid')#TODO: UPDATE DATALOADER FOR BSNIP
     
     # --------------------------
     # Training
@@ -269,30 +269,32 @@ def train_surf(config):
             # Reconstruction Loss
             if compute_reconstruction_loss:
                 optimizer.zero_grad()
-                # Set initial state and data
-                cortexode.set_data(v_in, volume_in, f=f_in)
+                # Detach inputs before setting data
+                cortexode.set_data(v_in.detach(), volume_in.detach(), f=f_in.detach())
 
                 # Integrate over time
-                v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
+                v_out = odeint(cortexode, v_in.detach(), t=T, method=solver, options=dict(step_size=step_size))[-1]
 
                 # Compute chamfer loss
-                chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
+                chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt.detach())[0]
                 chamfer_loss.backward()
                 optimizer.step()
                 avg_chamfer_loss.append(chamfer_loss.item())
+                torch.cuda.empty_cache()
                 
                 if surf_type == 'gm':
                     optimizer.zero_grad()
                     # Recompute v_out for MSE loss
-                    cortexode.set_data(v_in, volume_in, f=f_in)
-                    v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
+                    cortexode.set_data(v_in.detach(), volume_in.detach(), f=f_in.detach())
+                    v_out = odeint(cortexode, v_in.detach(), t=T, method=solver, options=dict(step_size=step_size))[-1]
 
-                    mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
+                    mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt.detach())
                     mse_loss.backward()
                     optimizer.step()
                     avg_mse_loss.append(mse_loss.item())
+                    torch.cuda.empty_cache()
                     
-                if compute_classification_loss and chamfer_loss < 0.2:
+                if compute_classification_loss and chamfer_loss.item() < 0.2:
                     optimizer.zero_grad()
                     if surf_type == 'wm':
                         # In-distribution approximate classification loss
@@ -303,7 +305,7 @@ def train_surf(config):
                         distances, indices = kdtree.query(v_out_np, k=1)
                         indices = torch.from_numpy(indices.flatten()).long().to(device)
                         nearest_gt_labels = torch.from_numpy(labels_np[indices.cpu().numpy()]).long().to(device)
-                        cortexode.set_data(v_out.detach(), volume_in, f=f_in)
+                        cortexode.set_data(v_out.detach(), volume_in.detach(), f=f_in.detach())
                         # Perform forward pass to get class logits without ODE integration
                         _ = cortexode(None, v_out.detach())
                         class_logits = cortexode.get_class_logits()
@@ -324,9 +326,10 @@ def train_surf(config):
                         in_dist_avg_classification_loss.append(classification_loss.item())
                         classification_loss.backward()
                         optimizer.step()
+                        torch.cuda.empty_cache()
                     elif surf_type == 'gm':
                         # In-distribution classification loss
-                        cortexode.set_data(v_out.detach(), volume_in, f=f_in)
+                        cortexode.set_data(v_out.detach(), volume_in.detach(), f=f_in.detach())
                         _ = cortexode(None, v_out.detach())
                         class_logits = cortexode.get_class_logits()
                         
@@ -346,13 +349,14 @@ def train_surf(config):
                         in_dist_avg_classification_loss.append(classification_loss.item())
                         classification_loss.backward()
                         optimizer.step()
+                        torch.cuda.empty_cache()
             # Classification Loss
             if compute_classification_loss:
                 optimizer.zero_grad()
-                cortexode.set_data(v_gt, volume_in, f=f_gt)
+                cortexode.set_data(v_gt.detach(), volume_in.detach(), f=f_gt.detach())
 
                 # Perform forward pass to get class logits without ODE integration
-                _ = cortexode(None, v_gt)
+                _ = cortexode(None, v_gt.detach())
 
                 class_logits = cortexode.get_class_logits()
                 
@@ -371,27 +375,28 @@ def train_surf(config):
                 classification_loss.backward()
                 optimizer.step()
                 avg_classification_loss.append(classification_loss.item())
+                torch.cuda.empty_cache()
 
-                if config.parc_init_dir is not None:#this is used to train reconstruction on synthetic data
+                if config.parc_init_dir is not None:
                     optimizer.zero_grad()
-                    _volume_in, v_gt, f_gt, labels_stage2, subid, color_map, v_in, f_in, nearest_labels, mask = trainsetStage2Class[idx]
+                    _volume_in, v_gt_s2, f_gt_s2, labels_stage2, subid, color_map, v_in_s2, f_in_s2, nearest_labels, mask = trainsetStage2Class[idx]
                     
-                    v_in = v_in.to(device).float().unsqueeze(0)
-                    v_gt = v_gt.to(device).float().unsqueeze(0)
-                    f_in = f_in.to(device).long().unsqueeze(0)
-                    f_gt = f_gt.to(device).long().unsqueeze(0)
+                    v_in_s2 = v_in_s2.to(device).float().unsqueeze(0)
+                    v_gt_s2 = v_gt_s2.to(device).float().unsqueeze(0)
+                    f_in_s2 = f_in_s2.to(device).long().unsqueeze(0)
+                    f_gt_s2 = f_gt_s2.to(device).long().unsqueeze(0)
                     nearest_labels = nearest_labels.squeeze(0).to(device).long()
 
-                    assert v_in.ndim == 3
-                    assert v_gt.ndim == 3
-                    assert f_in.ndim == 3
-                    assert f_gt.ndim == 3
+                    assert v_in_s2.ndim == 3
+                    assert v_gt_s2.ndim == 3
+                    assert f_in_s2.ndim == 3
+                    assert f_gt_s2.ndim == 3
                     assert subid == _subid[0], f"sub id doesn't match {subid}, {_subid} - dataset/loader issue"
 
-                    cortexode.set_data(v_in, volume_in, f=f_in)
+                    cortexode.set_data(v_in_s2.detach(), volume_in.detach(), f=f_in_s2.detach())
 
                     # Perform forward pass to get class logits without ODE integration
-                    _ = cortexode(None, v_in)
+                    _ = cortexode(None, v_in_s2.detach())
 
                     class_logits = cortexode.get_class_logits()
                     
@@ -407,9 +412,10 @@ def train_surf(config):
                     assert nearest_labels.shape[0] == class_logits.shape[0], f"{nearest_labels.shape}"
                     assert nearest_labels.dim() == 1, f"{nearest_labels.dim()}"
                     classification_loss = nn.CrossEntropyLoss()(class_logits, nearest_labels)
+                    in_dist_avg_classification_loss.append(classification_loss.item())
                     classification_loss.backward()
                     optimizer.step()
-                    in_dist_avg_classification_loss.append(classification_loss.item())
+                    torch.cuda.empty_cache()
 
         logger.info('epoch:{}, chamfer loss:{}'.format(epoch, np.mean(avg_chamfer_loss)))
         logger.info('epoch:{}, mse loss:{}'.format(epoch, np.mean(avg_mse_loss)))
@@ -440,20 +446,20 @@ def train_surf(config):
                     chamfer_valid_loss = 0
                     mse_valid_loss = 0
                     if compute_reconstruction_loss:
-                        # Set initial state and data
-                        cortexode.set_data(v_in, volume_in, f=f_in)
+                        # Detach inputs before setting data
+                        cortexode.set_data(v_in.detach(), volume_in.detach(), f=f_in.detach())
 
                         # Integrate over time
-                        v_out = odeint(cortexode, v_in, t=T, method=solver, options=dict(step_size=step_size))[-1]
+                        v_out = odeint(cortexode, v_in.detach(), t=T, method=solver, options=dict(step_size=step_size))[-1]
 
                         # Compute reconstruction loss
                         mse_loss = None
                         if surf_type == 'wm':
-                            chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
+                            chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt.detach())[0]
                             
                         elif surf_type == 'gm':
-                            mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt)
-                            chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt)[0]
+                            mse_loss = 1e3 * nn.MSELoss()(v_out, v_gt.detach())
+                            chamfer_loss = 1e3 * chamfer_distance(v_out, v_gt.detach())[0]
                             
 
                         chamfer_valid_loss = chamfer_loss.item()
@@ -470,9 +476,9 @@ def train_surf(config):
                             distances, indices = kdtree.query(v_out_np, k=1)
                             indices = torch.from_numpy(indices.flatten()).long().to(device)
                             nearest_gt_labels = torch.from_numpy(labels_np[indices.cpu().numpy()]).long().to(device)
-                            cortexode.set_data(v_out, volume_in, f=f_in)
+                            cortexode.set_data(v_out.detach(), volume_in.detach(), f=f_in.detach())
                             # Perform forward pass to get class logits without ODE integration
-                            _ = cortexode(None, v_out)
+                            _ = cortexode(None, v_out.detach())
                             class_logits = cortexode.get_class_logits()
                             
                             # Ensure labels are within valid range
@@ -501,10 +507,10 @@ def train_surf(config):
                             
                     if compute_classification_loss:
                         # Set data for classification
-                        cortexode.set_data(v_gt, volume_in, f=f_gt)
+                        cortexode.set_data(v_gt.detach(), volume_in.detach(), f=f_gt.detach())
 
                         # Perform forward pass to get class logits without ODE integration
-                        _ = cortexode(None, v_gt)
+                        _ = cortexode(None, v_gt.detach())
 
                         class_logits = cortexode.get_class_logits()
                         
@@ -533,24 +539,24 @@ def train_surf(config):
                         dice_valid_error.append(dice_score)
                         
                         if config.parc_init_dir is not None:
-                            _volume_in, v_gt, f_gt, labels_stage2, subid, color_map, v_in, f_in, nearest_labels, mask = validsetStage2Class[idx]
+                            _volume_in, v_gt_s2, f_gt_s2, labels_stage2, subid, color_map, v_in_s2, f_in_s2, nearest_labels, mask = validsetStage2Class[idx]
                             
-                            v_in = v_in.to(device).float().unsqueeze(0)
-                            v_gt = v_gt.to(device).float().unsqueeze(0)
-                            f_in = f_in.to(device).long().unsqueeze(0)
-                            f_gt = f_gt.to(device).long().unsqueeze(0)
+                            v_in_s2 = v_in_s2.to(device).float().unsqueeze(0)
+                            v_gt_s2 = v_gt_s2.to(device).float().unsqueeze(0)
+                            f_in_s2 = f_in_s2.to(device).long().unsqueeze(0)
+                            f_gt_s2 = f_gt_s2.to(device).long().unsqueeze(0)
                             nearest_labels = nearest_labels.squeeze(0).to(device).long()
 
-                            assert v_in.ndim == 3
-                            assert v_gt.ndim == 3
-                            assert f_in.ndim == 3
-                            assert f_gt.ndim == 3
+                            assert v_in_s2.ndim == 3
+                            assert v_gt_s2.ndim == 3
+                            assert f_in_s2.ndim == 3
+                            assert f_gt_s2.ndim == 3
                             
                             assert subid == _subid[0], f"sub id doesn't match {subid}, {_subid} - dataset/loader issue"
-                            cortexode.set_data(v_in, volume_in, f=f_in)
+                            cortexode.set_data(v_in_s2.detach(), volume_in.detach(), f=f_in_s2.detach())
                             
                             # Perform forward pass to get class logits without ODE integration
-                            _ = cortexode(None, v_in)
+                            _ = cortexode(None, v_in_s2.detach())
 
                             class_logits = cortexode.get_class_logits()
                             

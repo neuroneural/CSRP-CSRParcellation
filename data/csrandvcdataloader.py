@@ -33,7 +33,12 @@ class SegDataset(Dataset):
         self.data_usage = data_usage
         self.data_dir = os.path.join(config.data_dir, data_usage)
         # Assuming self.data_dir is the directory path containing subject folders and possibly other files
-        self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '',str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
+        if config.data_name == 'bsnip':
+            fn = os.path.join(config.data_dir,f'bsnip{self.data_usage}.txt')
+            with open(fn, 'r') as f:
+                self.subject_list = sorted([line.strip() for line in f if line.strip()])
+        else:
+            self.subject_list = sorted([re.sub(r'\D', '',str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '',str(item)))>1 and os.path.isdir(os.path.join(self.data_dir, item))])
         
     def __len__(self):
         return len(self.subject_list)
@@ -61,6 +66,25 @@ class SegDataset(Dataset):
         
         if data_name == 'hcp' or data_name == 'adni':
             brain = nib.load(data_dir+subid+'/mri/orig.mgz')
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 255.).astype(np.float32)
+            brain_arr = process_volume(brain_arr, data_name)
+            aff=brain.affine
+            
+            seg = nib.load(data_dir+subid+'/mri/ribbon.mgz')
+            seg_arr = seg.get_fdata()
+            seg_arr = process_volume(seg_arr, data_name)[0]
+            seg_left = (seg_arr == 2).astype(int)    # left wm
+            seg_right = (seg_arr == 41).astype(int)  # right wm
+
+            seg_arr = np.zeros_like(seg_left, dtype=int)  # final label
+            seg_arr += 1 * seg_left
+            seg_arr += 2 * seg_right
+        elif data_name == 'bsnip':
+            f = os.path.join(subid,'mri/orig.mgz')
+            # print('f',f,'subid',subid)
+            brain = nib.load(f)#may need to update this path.
+            
             brain_arr = brain.get_fdata()
             brain_arr = (brain_arr / 255.).astype(np.float32)
             brain_arr = process_volume(brain_arr, data_name)
@@ -114,9 +138,15 @@ class BrainDataset(Dataset):
         a list of subject IDs for lazy loading.
         """
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
         self.config = config
         self.data_usage = data_usage
+        if config.data_name == 'bsnip':
+            fn = os.path.join(config.data_dir,f'bsnip{self.data_usage}.txt')
+            with open(fn, 'r') as f:
+                self.subject_list = sorted([line.strip() for line in f if line.strip()])
+        else:
+            self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
+        
         self.mse_threshold = config.mse_threshold
         self.surf_hemi = config.surf_hemi
         self.surf_type = config.surf_type
@@ -127,7 +157,8 @@ class BrainDataset(Dataset):
 
     def __getitem__(self, idx):
         subid = f'{self.subject_list[idx]}'
-        subid = re.sub(r'\D', '', subid)
+        if self.config.data_name != 'bsnip':
+            subid = re.sub(r'\D', '', subid)
         # Load data for the subject identified by `subid`
         brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab = self._load_surf_data_for_subject(
             subid, self.config, self.data_usage
@@ -146,8 +177,16 @@ class BrainDataset(Dataset):
         device = self.device
 
         # Load MRI volume
+                
         if data_name in ['hcp', 'adni']:
             brain = nib.load(os.path.join(data_dir, subid, 'mri', 'orig.mgz'))
+            brain_arr = brain.get_fdata()
+            brain_arr = (brain_arr / 255.).astype(np.float32)
+            aff = brain.affine
+        elif data_name in ['bsnip']:
+            f = os.path.join(subid,'mri/orig.mgz')
+            # print('f',f,'subid',subid)
+            brain = nib.load(f)#may need to update this path.
             brain_arr = brain.get_fdata()
             brain_arr = (brain_arr / 255.).astype(np.float32)
             aff = brain.affine
@@ -171,8 +210,8 @@ class BrainDataset(Dataset):
 
         # Ensure labels are valid
         if labels is None or len(labels) != v_gt.shape[0]:
-            raise ValueError(f"Labels not loaded correctly for subject {subid}")
-
+            raise ValueError(f"Labels not loaded correctly for subject {subid},{labels}")
+            
         return brain_arr, v_in, v_gt, f_in, f_gt, labels, aff, ctab
 
     def _load_ground_truth_surface(self, data_dir, subid, data_name, surf_hemi, surf_type, aff):
@@ -195,6 +234,19 @@ class BrainDataset(Dataset):
             elif surf_type == 'gm':
                 v_gt, f_gt = nib.freesurfer.io.read_geometry(
                     os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial')
+                )
+            else:
+                raise ValueError(f"Unsupported surf_type: {surf_type}")
+        elif data_name == 'bsnip':
+            if surf_type == 'wm':
+                f = os.path.join(subid,'surf',f'{surf_hemi}.white')
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                    f
+                )
+            elif surf_type == 'gm':
+                f = os.path.join(subid,'surf',f'{surf_hemi}.pial')
+                v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                    f
                 )
             else:
                 raise ValueError(f"Unsupported surf_type: {surf_type}")
@@ -221,7 +273,9 @@ class BrainDataset(Dataset):
 
     def _load_input_surface(self, data_dir, subid, data_name, init_dir, surf_hemi, surf_type, aff):
         if surf_type == 'wm':
-            # Load initial mesh from init_dir
+            if self.config.data_name == 'bsnip':
+                subid = os.path.basename(os.path.normpath(subid))
+            
             init_mesh_path = os.path.join(init_dir, f'init_{data_name}_{surf_hemi}_{subid}.obj')
             # print('init_mesh_path',init_mesh_path)
             if not os.path.isfile(init_mesh_path):
@@ -237,6 +291,10 @@ class BrainDataset(Dataset):
             elif data_name == 'adni':
                 v_in, f_in = nib.freesurfer.io.read_geometry(
                     os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.white')
+                )
+            elif data_name == 'bsnip':
+                v_in, f_in = nib.freesurfer.io.read_geometry(
+                    os.path.join(subid, 'surf', f'{surf_hemi}.white')
                 )
             elif data_name == 'dhcp':
                 surf_in = nib.load(
@@ -277,11 +335,16 @@ class BrainDataset(Dataset):
         return v_in, f_in
 
     def _load_vertex_labels(self, data_dir, subid, atlas, surf_hemi):
-        atlas_dir = os.path.join(data_dir, subid, 'label')
+        if self.config.data_name == 'bsnip':
+            atlas_dir = os.path.join(subid, 'label')
+        else:
+            atlas_dir = os.path.join(data_dir, subid, 'label')
         try:
             if atlas == 'aparc':
                 annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
             elif atlas == 'DKTatlas40':
+                annot_file = os.path.join(atlas_dir, f'{surf_hemi}.aparc.{atlas}.annot')
+            elif atlas == 'DKTatlas':
                 annot_file = os.path.join(atlas_dir, f'{surf_hemi}.aparc.{atlas}.annot')
             else:
                 raise ValueError("Label mapping not supported yet.")

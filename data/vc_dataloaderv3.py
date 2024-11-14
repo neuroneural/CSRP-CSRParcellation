@@ -12,7 +12,6 @@ import random
 
 from scipy.spatial import cKDTree
 
-
 def chamfer_distance(v1, v2):
     
     kdtree1 = cKDTree(v1)
@@ -53,13 +52,19 @@ class CSRVertexLabeledDatasetV3(Dataset):
         self.config = config
         self.data_usage = data_usage
         self.data_dir = os.path.join(config.data_dir, data_usage)
-        self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
+        if config.data_name == 'bsnip':
+            fn = os.path.join(config.data_dir,f'bsnip{self.data_usage}.txt')
+            with open(fn, 'r') as f:
+                self.subject_list = sorted([line.strip() for line in f if line.strip()])
+        else:
+            self.subject_list = sorted([re.sub(r'\D', '', str(item)) for item in os.listdir(self.data_dir) if len(re.sub(r'\D', '', str(item))) > 1 and os.path.isdir(os.path.join(self.data_dir, item))])
     def __len__(self):
         return len(self.subject_list)
     
     def __getitem__(self, idx):
         subid = f'{self.subject_list[idx]}'
-        subid = re.sub(r'\D', '', subid)
+        if self.config.data_name != 'bsnip':
+            subid = re.sub(r'\D', '', subid)
         brain_arr, v_gt, f_gt, labels, ctab = self._load_vertex_labeled_data_for_subject(subid, self.config, self.data_usage)
         v_in, f_in = self._load_input_mesh(subid)
         
@@ -97,10 +102,19 @@ class CSRVertexLabeledDatasetV3(Dataset):
         data_name = config.data_name
         surf_type = config.surf_type  # surf_type from config
         surf_hemi = config.surf_hemi  # surf_hemi from config
-        atlas_dir = os.path.join(config.data_dir, data_usage, subid, 'label')
+        if self.config.data_name == 'bsnip':
+            atlas_dir = os.path.join(subid, 'label')
+        else:
+            atlas_dir = os.path.join(config.data_dir, data_usage, subid, 'label')
         try:
             if data_name == 'hcp' or data_name == 'adni':
                 brain = nib.load(os.path.join(data_dir, subid, 'mri', 'orig.mgz'))
+                brain_arr = brain.get_fdata()
+                brain_arr = (brain_arr / 255.).astype(np.float32)
+            elif data_name == 'bsnip':
+                f = os.path.join(subid,'mri/orig.mgz')
+                # print('f',f,'subid',subid)
+                brain = nib.load(f)#may need to update this path.
                 brain_arr = brain.get_fdata()
                 brain_arr = (brain_arr / 255.).astype(np.float32)
             elif data_name == 'dhcp':
@@ -130,6 +144,19 @@ class CSRVertexLabeledDatasetV3(Dataset):
                 elif surf_type == 'gm':
                     v_gt, f_gt = nib.freesurfer.io.read_geometry(
                         os.path.join(data_dir, subid, 'surf', f'{surf_hemi}.pial')
+                    )
+                else:
+                    raise ValueError(f"Unsupported surf_type: {surf_type}")
+            elif data_name == 'bsnip':
+                if surf_type == 'wm':
+                    f = os.path.join(subid,'surf',f'{surf_hemi}.white')
+                    v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                        f
+                    )
+                elif surf_type == 'gm':
+                    f = os.path.join(subid,'surf',f'{surf_hemi}.pial')
+                    v_gt, f_gt = nib.freesurfer.io.read_geometry(
+                        f
                     )
                 else:
                     raise ValueError(f"Unsupported surf_type: {surf_type}")
@@ -166,6 +193,7 @@ class CSRVertexLabeledDatasetV3(Dataset):
 
     def _load_vertex_labels(self, atlas_dir, surf_hemi, atlas):
         try:
+            
             if self.config.atlas == 'aparc':
                 annot_file = os.path.join(atlas_dir, f'{surf_hemi}.{atlas}.annot')
             elif self.config.atlas == 'DKTatlas40':

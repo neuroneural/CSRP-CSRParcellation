@@ -67,7 +67,7 @@ echo "Running configuration: Version $version, GNN $gnn, GNN Layers $gnn_layer, 
 #--data_dir '/speedrun/isbi-data-dev/' \
     
 # Execute Python script with parameters
-python trainCSRandParcellationResume.py \
+python trainCSRandParcellationResume3.py \
     --model_type 'csrvc' \
     --patience 'standard' \
     --version $version \
@@ -77,11 +77,11 @@ python trainCSRandParcellationResume.py \
     --train_type 'surfandseg' \
     --compute_reconstruction_loss 'yes' \
     --compute_classification_loss 'no' \
-    --data_dir '/speedrun/cortexode-data-rp/' \
-    --model_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/model/' \
-    --init_dir '/cortexode/ckpts/isbi/isbi_gnnv4_0/init/' \
-    --model_file 'model_wm_hcp_rh_vc_v4_csrvc_layers8_sf0.1_heads1_30epochs_euler_recon_noclass_de0.1_415692.pt' \
-    --data_name 'hcp' \
+    --data_dir '/cortexode/bsnipanalysis/' \
+    --model_dir '/cortexode/ckpts/bsnip/bsnip_0/model/' \
+    --init_dir '/cortexode/ckpts/bsnip/bsnip_0/init/' \
+    --atlas 'DKTatlas' \
+    --data_name 'bsnip' \
     --surf_hemi 'rh' \
     --surf_type 'wm' \
     --n_epochs 401 \
