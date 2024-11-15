@@ -4,7 +4,7 @@
 #SBATCH --mem=30g
 #SBATCH -p qTRDGPU
 #SBATCH --gres=gpu:RTX:1
-#SBATCH -t 0-02:00
+#SBATCH -t 0-05:00
 #SBATCH -J ctoinitl
 #SBATCH -e jobs/error%A.err
 #SBATCH -o jobs/out%A.out
@@ -17,7 +17,7 @@
 sleep 5s
 
 module load singularity/3.10.2
-singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/bsnipanalysis/singularity/bsnip/init/initsurflh.sh &
+singularity exec --nv --bind /data,/data/users2/washbee/speedrun/:/speedrun,/data/users2/washbee/CortexODE-CSRFusionNet:/cortexode /data/users2/washbee/containers/csrf_sandbox/ /cortexode/hcpanalysis/singularity/hcp/init/initsurflh.sh &
 
 wait
 
